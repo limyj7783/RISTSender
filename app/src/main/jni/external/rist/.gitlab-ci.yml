@@ -1,0 +1,150 @@
+stages:
+  - build
+  - analyze
+  - test
+  - test2
+
+.ubuntu-amd64-bionic:
+    image: registry.videolan.org/librist-ubuntu-bionic:20200501213126
+    stage: build
+    tags:
+        - docker
+        - amd64
+
+.debian-amd64-common:
+    image: registry.videolan.org/dav1d-debian-unstable:20200306210534
+    stage: build
+    tags:
+        - docker
+        - amd64
+
+build-ubuntu:
+    extends: .ubuntu-amd64-bionic
+    tags:
+        - docker
+        - avx2
+        - amd64
+    script:
+        - meson build --buildtype release --werror
+        - ninja -C build
+    artifacts:
+        paths:
+          - build
+        expire_in: 24 hours
+
+build-win64:
+    extends: .debian-amd64-common
+    script:
+        - wineserver -p && wine wineboot
+        - meson build --buildtype release
+                      --werror
+                      --libdir lib
+                      --cross-file common/ci/x86_64-w64-mingw32.meson
+                      -Ddefault_library=both
+                      -Duse_mbedtls=false
+                      -Dhave_mingw_pthreads=true
+        - ninja -C build
+    artifacts:
+        paths:
+          - build
+        expire_in: 24 hours
+
+
+build-macos:
+    stage: build
+    tags:
+        - macos
+    script:
+        - meson build --buildtype release
+                      --werror
+                      -Ddefault_library=both
+                      -Duse_mbedtls=false
+        - ninja -C build
+
+
+build-freebsd:
+    stage: build
+    only: [branches@rist/librist]
+    tags:
+        - freebsd
+    script:
+        - LDFLAGS="-L/usr/local/lib" CFLAGS="-I/usr/local/include" meson build --buildtype release --werror
+        - ninja -C build
+    artifacts:
+        paths:
+          - build
+        expire_in: 24 hours
+
+
+analyze-ubuntu:
+    stage: analyze
+    extends:
+        - .ubuntu-amd64-bionic
+    needs: ["build-ubuntu"]
+    script:
+        - meson build --buildtype release --werror -Dstatic_analyze=true
+        - ninja -C build analyze
+    dependencies: []
+
+test-ubuntu:
+    stage: test
+    extends:
+        - .ubuntu-amd64-bionic
+    needs: ["build-ubuntu"]
+    script:
+        - cd build && meson test --print-errorlogs
+    dependencies:
+        - build-ubuntu
+    artifacts:
+        when: on_failure
+        paths:
+            - build/meson-logs/testlog.txt
+
+test-win64:
+    stage: test2
+    extends: .debian-amd64-common
+    needs: ["build-win64", "test-ubuntu"]
+    script:
+        - cd build && meson test --suite unicast --print-errorlogs
+    dependencies:
+        - build-win64
+    artifacts:
+        when: on_failure
+        paths:
+            - build/meson-logs/testlog.txt
+
+test-macos:
+    stage: test
+    tags:
+        - macos
+    needs: ["build-macos"]
+    script:
+        - meson build --buildtype release
+                      --werror
+                      -Ddefault_library=both
+                      -Duse_mbedtls=false
+        - cd build && MESON_TESTTHREADS=4 meson test --suite unicast --print-errorlogs --timeout-multiplier=10
+    dependencies:
+        - build-macos
+    artifacts:
+        when: on_failure
+        paths:
+            - build/meson-logs/testlog.txt
+
+
+test-freebsd:
+    stage: test
+    only: [branches@rist/librist]
+    tags:
+        - freebsd
+    needs: ["build-freebsd"]
+    script:
+        - cd build && meson test --suite unicast --print-errorlogs
+    dependencies:
+        - build-freebsd
+    artifacts:
+        when: on_failure
+        paths:
+            - build/meson-logs/testlog.txt
+
+
