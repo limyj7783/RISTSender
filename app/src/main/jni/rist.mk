@@ -298,7 +298,7 @@ LOCAL_SRC_FILES		+= external/rist/build/include/librist/librist_config.h \
                        external/rist/src/udp-private.h \
                        external/rist/src/udp.c \
                        external/rist/src/udpsocket.c \
-                       RISTInterface.cpp
+                       RISTSenderInterface.cpp
 
 LOCAL_CFLAGS 		+=  -Wno-multichar -fpermissive
 LOCAL_LDLIBS  		+=	-landroid -llog -lEGL -lGLESv2 -lGLESv1_CM
