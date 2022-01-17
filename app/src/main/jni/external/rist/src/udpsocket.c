@@ -14,6 +14,8 @@
 #endif
 #endif
 
+#include <android/log.h>
+
 /* Private functions */
 static const int yes = 1; // no = 0;
 
@@ -38,7 +40,7 @@ int udpsocket_resolve_host(const char *host, uint16_t port, struct sockaddr *add
 		struct addrinfo *res;
 		int gai_ret = getaddrinfo(host, NULL, NULL, &res);
 		if (gai_ret != 0) {
-			rist_log_priv3( RIST_LOG_ERROR, "Failure resolving host %s: %s\n", host, gai_strerror(gai_ret));
+			__android_log_print(ANDROID_LOG_ERROR, "RIST", "Failure resolving host %s: %s", host, gai_strerror(gai_ret));
 			return -1;
 		}
 		if (res[0].ai_family == AF_INET6) {
@@ -91,7 +93,7 @@ int udpsocket_set_optimal_buffer_size(int sd)
 #endif
 	}
 	if (current_recvbuf < bufsize){
-		rist_log_priv3( RIST_LOG_ERROR, "Your UDP receive buffer is set < 200 kbytes (%"PRIu32") and the kernel denied our request for an increase. It's recommended to set your net.core.rmem_max setting to at least 200 kbyte for best results.", current_recvbuf);
+		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Your UDP receive buffer is set < 200 kbytes (%"PRIu32") and the kernel denied our request for an increase. It's recommended to set your net.core.rmem_max setting to at least 200 kbyte for best results.", current_recvbuf);
 		return -1;
 	}
 	return 0;
@@ -124,7 +126,7 @@ int udpsocket_set_optimal_buffer_send_size(int sd)
 #endif
 	}
 	if (current_sendbuf < bufsize){
-		rist_log_priv3( RIST_LOG_ERROR, "Your UDP send buffer is set < 200 kbytes (%"PRIu32") and the kernel denied our request for an increase. It's recommended to set your net.core.rmem_max setting to at least 200 kbyte for best results.", current_sendbuf);
+		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Your UDP send buffer is set < 200 kbytes (%"PRIu32") and the kernel denied our request for an increase. It's recommended to set your net.core.rmem_max setting to at least 200 kbyte for best results.", current_sendbuf);
 		return -1;
 	}
 	return 0;
@@ -210,8 +212,8 @@ int udpsocket_join_mcast_group(int sd, const char* miface, struct sockaddr* sa, 
 		ifindex = atoi(miface);
 #endif
 		if (!ifindex) {
-			rist_log_priv3(RIST_LOG_ERROR, "Failed to get interface index error: %s\n", strerror(errno));
-			rist_log_priv3(RIST_LOG_INFO, "Falling back to joining via default route\n");
+		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Failed to get interface index error: %s", strerror(errno));
+			__android_log_print(ANDROID_LOG_INFO, "RIST", "Falling back to joining via default route");
 		}
 	}
 #ifdef MCAST_JOIN_GROUP
@@ -219,19 +221,19 @@ int udpsocket_join_mcast_group(int sd, const char* miface, struct sockaddr* sa, 
 		struct group_req gr;
 		gr.gr_interface = ifindex;
 		memcpy(&gr.gr_group, mcast_v4, sizeof(*mcast_v4));
-		rist_log_priv3(RIST_LOG_INFO, "Joining multicast address: %s with %s\n", mcastaddress, miface);
+		__android_log_print(ANDROID_LOG_INFO, "RIST", "Joining multicast address: %s with %s", mcastaddress, miface);
 		if (setsockopt(sd, SOL_IP, MCAST_JOIN_GROUP, (const char *)&gr, sizeof(gr)) == 0) {
 			return 0;
 		}
 	}
 #endif
 	inet_ntop(AF_INET, &(src_addr), address, INET_ADDRSTRLEN);
-	rist_log_priv3(RIST_LOG_INFO, "Joining multicast address: %s from IP %s\n", mcastaddress, address);
+	__android_log_print(ANDROID_LOG_INFO, "RIST", "Joining multicast address: %s from IP %s", mcastaddress, address);
 	struct ip_mreq group;
 	group.imr_multiaddr.s_addr = mcast_v4->sin_addr.s_addr;
 	group.imr_interface.s_addr = src_addr;
 	if (setsockopt(sd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&group, sizeof(group)) < 0) {
-		rist_log_priv3( RIST_LOG_ERROR, "Failed to join multicast group\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Failed to join multicast group");
 		goto fail;
 	}
 	return 0;
@@ -268,11 +270,11 @@ int udpsocket_open_connect(const char *host, uint16_t port, const char *mciface)
 
 	if (setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, (char *)&yes, sizeof(int)) < 0) {
 		/* Non-critical error */
-		rist_log_priv3( RIST_LOG_ERROR,"Cannot set SO_REUSEADDR: %s\n", strerror(errno));
+		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Cannot set SO_REUSEADDR: %s", strerror(errno));
 	}
 	if (setsockopt(sd, proto, ttlcmd, (char *)&ttl, sizeof(ttl)) < 0) {
 		/* Non-critical error */
-		rist_log_priv3( RIST_LOG_ERROR,"Cannot set socket MAX HOPS: %s\n", strerror(errno));
+		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Cannot set socket MAX HOPS: %s", strerror(errno));
 	}
 	if (mciface && mciface[0] != '\0')
 		udpsocket_set_mcast_iface(sd, mciface, raw.sin6_family);
@@ -310,26 +312,26 @@ int udpsocket_open_bind(const char *host, uint16_t port, const char *mciface)
 	}
 	if (setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, (char *)&yes, sizeof(int)) < 0) {
 		/* Non-critical error */
-		rist_log_priv3( RIST_LOG_ERROR, "Cannot set SO_REUSEADDR: %s\n", strerror(errno));
+		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Cannot set SO_REUSEADDR: %s", strerror(errno));
 	}
 #if defined(_WIN32) || defined(__APPLE__)
 	if (is_multicast) {
 		struct sockaddr_in6 sa = { .sin6_family = raw.sin6_family, .sin6_port = raw.sin6_port };
 		if (bind(sd, (struct sockaddr *)&sa, addrlen) < 0)	{
-			rist_log_priv3(RIST_LOG_ERROR, "Could not bind to interface: %s\n", strerror(errno));
+		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not bind to interface: %s", strerror(errno));
 			close(sd);
 			return -1;
 		}
 	} else
 #endif
 	if (bind(sd, (struct sockaddr *)&raw, addrlen) < 0)	{
-		rist_log_priv3( RIST_LOG_ERROR, "Could not bind to interface: %s\n", strerror(errno));
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not bind to interface: %s", strerror(errno));
 		close(sd);
 		return -1;
 	}
 	if (is_multicast) {
 		if (udpsocket_join_mcast_group(sd, mciface, (struct sockaddr *)&raw, raw.sin6_family) != 0) {
-			rist_log_priv3( RIST_LOG_ERROR, "Could not join multicast group: %s on %s\n", host, mciface);
+		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not join multicast group: %s on %s", host, mciface);
 			return -1;
 		}
 	}

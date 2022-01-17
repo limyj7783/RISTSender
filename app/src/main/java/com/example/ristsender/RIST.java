@@ -9,4 +9,8 @@ public class RIST
 
 
     public native int getTestValue();
+    public native int SendStart(String url, int port);
+    public native int SendStop();
+    public native int ReceiveStart();
+    public native int ReceiveStop();
 }

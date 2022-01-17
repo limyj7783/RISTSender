@@ -19,6 +19,8 @@
 #include <processthreadsapi.h>
 #endif
 
+#include <android/log.h>
+
 #undef RIST_DEPRECATED
 
 /* Receiver functions */
@@ -29,18 +31,18 @@ int rist_receiver_create(struct rist_ctx **_ctx, enum rist_profile profile,
 	struct rist_ctx *rist_ctx = calloc(1, sizeof(*rist_ctx));
 	if (!rist_ctx)
 	{
-		rist_log_priv2(logging_settings, RIST_LOG_ERROR, "Could not create ctx object, OOM!\n");
+		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not create ctx object, OOM!");
 		return -1;
 	}
 	if (profile == RIST_PROFILE_ADVANCED)
 	{
-		rist_log_priv2(logging_settings, RIST_LOG_WARN, "Advanced profile not implemented yet, using main profile instead\n");
+	    __android_log_print(ANDROID_LOG_WARN, "RIST", "Advanced profile not implemented yet, using main profile instead");
 		profile = RIST_PROFILE_MAIN;
 	}
 	struct rist_receiver *ctx = calloc(1, sizeof(*ctx));
 	if (!ctx)
 	{
-		rist_log_priv2(logging_settings, RIST_LOG_ERROR, "Could not create ctx object, OOM!\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not create ctx object, OOM!");
 		free(rist_ctx);
 		return -1;
 	}
@@ -99,12 +101,12 @@ int rist_receiver_nack_type_set(struct rist_ctx *rist_ctx, enum rist_nack_type n
 {
 	if (RIST_UNLIKELY(!rist_ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "ctx is null on rist_receiver_nack_type_set call!\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "ctx is null on rist_receiver_nack_type_set call!");
 		return -1;
 	}
 	if (RIST_UNLIKELY(rist_ctx->mode != RIST_RECEIVER_MODE || !rist_ctx->receiver_ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_receiver_nack_type_set call with CTX not set up for receiving\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_receiver_nack_type_set call with CTX not set up for receiving");
 		return -1;
 	}
 	struct rist_receiver *ctx = rist_ctx->receiver_ctx;
@@ -145,12 +147,12 @@ int rist_receiver_data_read2(struct rist_ctx *rist_ctx, struct rist_data_block *
 {
 	if (RIST_UNLIKELY(!rist_ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "ctx is null on rist_receiver_data_read call!\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "ctx is null on rist_receiver_data_read call!");
 		return -1;
 	}
 	if (RIST_UNLIKELY(rist_ctx->mode != RIST_RECEIVER_MODE || !rist_ctx->receiver_ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_receiver_data_read call with CTX not set up for receiving\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_receiver_data_read call with CTX not set up for receiving");
 		return -2;
 	}
 
@@ -232,12 +234,12 @@ int rist_receiver_data_notify_fd_set(struct rist_ctx *rist_ctx, int fd)
 {
 	if (RIST_UNLIKELY(!rist_ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "ctx is null on rist_receiver_data_notify_fd_set call!\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "ctx is null on rist_receiver_data_notify_fd_set call!");
 		return -1;
 	}
 	if (RIST_UNLIKELY(rist_ctx->mode != RIST_RECEIVER_MODE || !rist_ctx->receiver_ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_receiver_data_notify_fd_set call with CTX not set up for receiving\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_receiver_data_notify_fd_set call with CTX not set up for receiving");
 		return -1;
 	}
 	struct rist_receiver *ctx = rist_ctx->receiver_ctx;
@@ -250,7 +252,7 @@ int rist_connection_status_callback_set(struct rist_ctx *ctx, connection_status_
 {
 	if (RIST_UNLIKELY(!ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "ctx is null on rist_connection_status_callback_set call!\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "ctx is null on rist_connection_status_callback_set call!");
 		return -1;
 	}
 	struct rist_common_ctx *cctx = NULL;
@@ -261,7 +263,7 @@ int rist_connection_status_callback_set(struct rist_ctx *ctx, connection_status_
 		cctx = &ctx->sender_ctx->common;
 	}
 	else {
-		rist_log_priv3(RIST_LOG_ERROR, "Unknown error in rist_connection_status_callback_set call!\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Unknown error in rist_connection_status_callback_set call!");
 		return -1;
 	}
 	cctx->connection_status_callback = connection_status_callback;
@@ -279,14 +281,12 @@ int rist_receiver_data_callback_set2(struct rist_ctx *rist_ctx,
                                      receiver_data_callback2_t data_callback,
                                      void *arg) {
   if (RIST_UNLIKELY(!rist_ctx)) {
-    rist_log_priv3(RIST_LOG_ERROR,
-                   "ctx is null on rist_receiver_data_callback_set call!\n");
+    __android_log_print(ANDROID_LOG_ERROR, "RIST", "ctx is null on rist_receiver_data_callback_set call!");
     return -1;
   }
   if (RIST_UNLIKELY(rist_ctx->mode != RIST_RECEIVER_MODE ||
                     !rist_ctx->receiver_ctx)) {
-    rist_log_priv3(RIST_LOG_ERROR, "rist_receiver_data_callback_set call with "
-                                   "CTX not set up for receiving\n");
+    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_receiver_data_callback_set call with CTX not set up for receiving\n");
     return -1;
   }
   struct rist_receiver *ctx = rist_ctx->receiver_ctx;
@@ -303,26 +303,26 @@ int rist_sender_create(struct rist_ctx **_ctx, enum rist_profile profile,
 
 	if (profile == RIST_PROFILE_ADVANCED)
 	{
-		rist_log_priv2(logging_settings, RIST_LOG_WARN, "Advanced profile not implemented yet, using main profile instead\n");
+	    __android_log_print(ANDROID_LOG_WARN, "RIST", "Advanced profile not implemented yet, using main profile instead");
 		profile = RIST_PROFILE_MAIN;
 	}
 
 	if (flow_id % 2 != 0)
 	{
-		rist_log_priv2(logging_settings, RIST_LOG_ERROR, "Flow ID must be an even number!\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Flow ID must be an even number!");
 		return -1;
 	}
 
 	struct rist_ctx *rist_ctx = calloc(1, sizeof(*rist_ctx));
 	if (!rist_ctx)
 	{
-		rist_log_priv2(logging_settings, RIST_LOG_ERROR, "Could not create ctx object, OOM!\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not create ctx object, OOM!");
 		return -1;
 	}
 	struct rist_sender *ctx = calloc(1, sizeof(*ctx));
 	if (!ctx)
 	{
-		rist_log_priv2(logging_settings, RIST_LOG_ERROR, "Could not create ctx object, OOM!\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not create ctx object, OOM!");
 		free(rist_ctx);
 		return -1;
 	}
@@ -423,12 +423,12 @@ int rist_sender_flow_id_get(struct rist_ctx *rist_ctx, uint32_t *flow_id)
 {
 	if (RIST_UNLIKELY(!rist_ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_sender_flow_id_get call with null context");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_sender_flow_id_get call with null context");
 		return -1;
 	}
 	if (RIST_UNLIKELY(rist_ctx->mode != RIST_SENDER_MODE || !rist_ctx->sender_ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_sender_flow_id_get call with ctx not set up for sending\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_sender_flow_id_get call with ctx not set up for sending");
 		return -1;
 	}
 	struct rist_sender *ctx = rist_ctx->sender_ctx;
@@ -440,17 +440,17 @@ int rist_sender_npd_enable(struct rist_ctx *rist_ctx)
 {
 	if (RIST_UNLIKELY(!rist_ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_sender_flow_id_set call with null context");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_sender_flow_id_set call with null context");
 		return -1;
 	}
 	if (RIST_UNLIKELY(rist_ctx->mode != RIST_SENDER_MODE || !rist_ctx->sender_ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_sender_flow_id_set call with ctx not set up for sending\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_sender_flow_id_set call with ctx not set up for sending");
 		return -1;
 	}
 	struct rist_sender *ctx = rist_ctx->sender_ctx;
 	ctx->null_packet_suppression = true;
-	rist_log_priv2(ctx->common.logging_settings, RIST_LOG_INFO, "Enabled NULL Packet deletion\n");
+	__android_log_print(ANDROID_LOG_INFO, "RIST", "Enabled NULL Packet deletion");
 	return 0;
 }
 
@@ -458,17 +458,17 @@ int rist_sender_npd_disable(struct rist_ctx *rist_ctx)
 {
 	if (RIST_UNLIKELY(!rist_ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_sender_flow_id_set call with null context");
+   	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_sender_flow_id_set call with null context");
 		return -1;
 	}
 	if (RIST_UNLIKELY(rist_ctx->mode != RIST_SENDER_MODE || !rist_ctx->sender_ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_sender_flow_id_set call with ctx not set up for sending\n");
+   	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_sender_flow_id_set call with ctx not set up for sending");
 		return -1;
 	}
 	struct rist_sender *ctx = rist_ctx->sender_ctx;
 	ctx->null_packet_suppression = false;
-	rist_log_priv2(ctx->common.logging_settings, RIST_LOG_INFO, "Disabled NULL Packet deletion\n");
+	__android_log_print(ANDROID_LOG_INFO, "RIST", "Disabled NULL Packet deletion");
 	return 0;
 }
 
@@ -476,12 +476,12 @@ int rist_sender_flow_id_set(struct rist_ctx *rist_ctx, uint32_t flow_id)
 {
 	if (RIST_UNLIKELY(!rist_ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_sender_flow_id_set call with null context");
+    	__android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_sender_flow_id_set call with null context");
 		return -1;
 	}
 	if (RIST_UNLIKELY(rist_ctx->mode != RIST_SENDER_MODE || !rist_ctx->sender_ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_sender_flow_id_set call with ctx not set up for sending\n");
+    	__android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_sender_flow_id_set call with ctx not set up for sending");
 		return -1;
 	}
 	struct rist_sender *ctx = rist_ctx->sender_ctx;
@@ -500,12 +500,12 @@ int rist_sender_data_write(struct rist_ctx *rist_ctx, const struct rist_data_blo
 {
 	if (RIST_UNLIKELY(!rist_ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_sender_data_write call with null context");
+    	__android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_sender_data_write call with null context");
 		return -1;
 	}
 	if (RIST_UNLIKELY(rist_ctx->mode != RIST_SENDER_MODE || !rist_ctx->sender_ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_sender_data_write call with ctx not set up for sending\n");
+    	__android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_sender_data_write call with ctx not set up for sending");
 		return -1;
 	}
 	struct rist_sender *ctx = rist_ctx->sender_ctx;
@@ -545,7 +545,7 @@ int rist_oob_read(struct rist_ctx *ctx, const struct rist_oob_block **oob_block)
 	RIST_MARK_UNUSED(oob_block);
 	if (!ctx)
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "ctx is null on rist_oob_read call!\n");
+    	__android_log_print(ANDROID_LOG_ERROR, "RIST", "ctx is null on rist_oob_read call!");
 		return -1;
 	}
 	struct rist_common_ctx *cctx = rist_struct_get_common(ctx);
@@ -560,7 +560,7 @@ int rist_oob_write(struct rist_ctx *ctx, const struct rist_oob_block *oob_block)
 {
 	if (RIST_UNLIKELY(!ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_oob_write call with null ctx!\n");
+    	__android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_oob_write call with null ctx!");
 		return -1;
 	}
 	struct rist_common_ctx *cctx = rist_struct_get_common(ctx);
@@ -582,7 +582,7 @@ int rist_oob_callback_set(struct rist_ctx *ctx,
 {
 	if (RIST_UNLIKELY(!ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_oob_callback_set call with null ctx!\n");
+    	__android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_oob_callback_set call with null ctx!");
 		return -1;
 	}
 	struct rist_common_ctx *cctx = rist_struct_get_common(ctx);
@@ -624,7 +624,7 @@ int rist_auth_handler_set(struct rist_ctx *ctx,
 {
 	if (RIST_UNLIKELY(!ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_auth_handler_set call with null ctx!\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_auth_handler_set call with null ctx!");
 		return -1;
 	}
 	struct rist_common_ctx *cctx = rist_struct_get_common(ctx);
@@ -689,7 +689,7 @@ int rist_stats_callback_set(struct rist_ctx *ctx, int statsinterval, int (*stats
 {
 	if (RIST_UNLIKELY(!ctx))
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_stats_callback_set call with null ctx!\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_stats_callback_set call with null ctx!");
 		return -1;
 	}
 	struct rist_common_ctx *cctx = rist_struct_get_common(ctx);
@@ -870,7 +870,10 @@ static int rist_sender_peer_create(struct rist_sender *ctx,
 	struct rist_peer *newpeer = rist_sender_peer_insert_local(ctx, config, false);
 
 	if (!newpeer)
-		return -1;
+	{
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "newpeer is null");
+        return -1;
+	}
 
 	// TODO: Validate config data (virt_dst_port != 0 for example)
 
@@ -883,6 +886,7 @@ static int rist_sender_peer_create(struct rist_sender *ctx,
 		if (!peer_rtcp)
 		{
 			// TODO: remove from peerlist (create sender_delete peer function)
+			__android_log_print(ANDROID_LOG_ERROR, "RIST", "peer_rtcp is null");
 			free(newpeer);
 			return -1;
 		}
@@ -922,7 +926,7 @@ static int rist_sender_peer_create(struct rist_sender *ctx,
 
 int rist_peer_create(struct rist_ctx *ctx, struct rist_peer **peer, const struct rist_peer_config *config) {
 	if (!ctx) {
-		rist_log_priv3(RIST_LOG_ERROR, "rist_peer_create call with null ctx\n");
+		__android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_peer_create call with null ctx");
 		return -1;
 	}
 	int ret = 0;
@@ -931,11 +935,15 @@ int rist_peer_create(struct rist_ctx *ctx, struct rist_peer **peer, const struct
 		cctx = &ctx->receiver_ctx->common;
 		pthread_mutex_lock(&cctx->peerlist_lock);
 		ret = rist_receiver_peer_create(ctx->receiver_ctx, peer, config);
+
+		__android_log_print(ANDROID_LOG_DEBUG, "RIST", "receiver peer create ret:%d", ret);
 	}
 	else if (ctx->mode == RIST_SENDER_MODE && ctx->sender_ctx) {
 		cctx = &ctx->sender_ctx->common;
 		pthread_mutex_lock(&cctx->peerlist_lock);
-		ret  =rist_sender_peer_create(ctx->sender_ctx, peer, config);
+		ret  = rist_sender_peer_create(ctx->sender_ctx, peer, config);
+
+		__android_log_print(ANDROID_LOG_DEBUG, "RIST", "sender peer create ret:%d", ret);
 	}
 	else
 		return -1;
@@ -947,13 +955,13 @@ int rist_peer_weight_set(struct rist_ctx *ctx, struct rist_peer *peer, const uin
 {
 	if (!ctx)
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_peer_weight_set call with null ctx\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_peer_weight_set call with null ctx");
 		return -1;
 	}
 
 	if (peer->parent != NULL)
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_peer_weight_set cannot be applied to peer with parent\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_peer_weight_set cannot be applied to peer with parent");
 		return -1;
 	}
 
@@ -988,7 +996,7 @@ int rist_peer_weight_set(struct rist_ctx *ctx, struct rist_peer *peer, const uin
 
 int rist_peer_destroy(struct rist_ctx *ctx, struct rist_peer *peer) {
 	if (!ctx) {
-		rist_log_priv3(RIST_LOG_ERROR, "rist_peer_destroy call with null ctx\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_peer_destroy call with null ctx");
 		return -1;
 	}
 	struct rist_common_ctx *cctx = NULL;
@@ -1058,7 +1066,7 @@ unlock_failed:
 
 int rist_start(struct rist_ctx *ctx) {
 	if (!ctx) {
-		rist_log_priv3(RIST_LOG_ERROR, "rist_start call with null ctx\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_start call with null ctx");
 		return -1;
 	}
 	if (ctx->mode == RIST_RECEIVER_MODE && ctx->receiver_ctx)
@@ -1109,7 +1117,7 @@ static int rist_receiver_destroy(struct rist_receiver *ctx)
 
 int rist_destroy(struct rist_ctx *ctx) {
 	if (!ctx) {
-		rist_log_priv3(RIST_LOG_ERROR, "rist_destroy call with null ctx\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_destroy call with null ctx");
 		return -1;
 	}
 	if (ctx->mode == RIST_RECEIVER_MODE && ctx->receiver_ctx)
@@ -1126,22 +1134,22 @@ int rist_receiver_set_output_fifo_size(struct rist_ctx *ctx, uint32_t desired_si
 {
 	if (!ctx)
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_receiver_set_fifo_size called with null ctx\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_receiver_set_fifo_size called with null ctx");
 		return -1;
 	}
 	if (ctx->mode != RIST_RECEIVER_MODE || !ctx->receiver_ctx)
 	{
-		rist_log_priv3(RIST_LOG_ERROR, "rist_receiver_set_fifo_size can only be called on receiver\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_receiver_set_fifo_size can only be called on receiver");
 		return -2;
 	}
 	if (ctx->receiver_ctx->receiver_thread)
 	{
-		rist_log_priv2(ctx->receiver_ctx->common.logging_settings, RIST_LOG_ERROR, "rist_receiver_set_fifo_size must be called before starting\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "rist_receiver_set_fifo_size must be called before starting");
 		return -3;
 	}
 	if ((desired_size & (desired_size -1)) != 0)
 	{
-		rist_log_priv2(ctx->receiver_ctx->common.logging_settings, RIST_LOG_ERROR, "Desired fifo size must be a power of 2\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Desired fifo size must be a power of 2");
 		return -4;
 	}
 	ctx->receiver_ctx->fifo_queue_size = desired_size;

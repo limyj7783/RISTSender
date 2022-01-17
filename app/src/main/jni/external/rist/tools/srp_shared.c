@@ -88,7 +88,8 @@ void user_verifier_lookup(char * username,
 	if ((read_verifier_len % 4) != 0)
 	{
 		size_t needed_padding = 4 - (read_verifier_len % 4);
-		for (size_t i = 0; i < needed_padding; i++)
+		size_t i = 0;
+		for (i = 0; i < needed_padding; i++)
 			read_verifier[(read_verifier_len + i)] = '=';
 		read_verifier_len += needed_padding;
 		read_verifier[read_verifier_len] = '\0';
@@ -96,7 +97,8 @@ void user_verifier_lookup(char * username,
 	if ((read_salt_len % 4) != 0)
 	{
 		size_t needed_padding = 4 - (read_salt_len % 4);
-		for (size_t i = 0; i < needed_padding; i++)
+		size_t i = 0;
+		for (i = 0; i < needed_padding; i++)
 			read_salt[(read_salt_len + i)] = '=';
 		read_salt_len += needed_padding;
 		read_salt[read_salt_len] = '\0';

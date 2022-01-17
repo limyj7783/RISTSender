@@ -1,17 +1,18 @@
-#include <jni.h>
-
-#include "RISTDefine.h"
-#include "RISTFunction.h"
-
-
-#ifndef _Included_com_example_ristsender_RIST
-#define _Included_com_example_ristsender_RIST
+#ifndef _Included_com_example_ristsender_RISTSenderInterface
+#define _Included_com_example_ristsender_RISTSenderInterface
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#include <jni.h>
+
+#include "RISTDefine.h"
+//#include "RISTFunction.h"
+#include <android/log.h>
+
 JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_getTestValue(JNIEnv *, jobject);
-JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_Initialize(JNIEnv *, jobject);
+JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_SendStart(JNIEnv *, jobject, jstring, jint);
+JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_SendStop(JNIEnv *, jobject);
 
 static struct rist_peer* setup_rist_peer(struct rist_sender_args *setup);
 static void input_udp_recv(struct evsocket_ctx *evctx, int fd, short revents, void *arg);

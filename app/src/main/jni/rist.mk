@@ -298,6 +298,8 @@ LOCAL_SRC_FILES		+= external/rist/build/include/librist/librist_config.h \
                        external/rist/src/udp-private.h \
                        external/rist/src/udp.c \
                        external/rist/src/udpsocket.c \
+                       external/rist/tools/srp_shared.c \
+                       external/rist/tools/oob_shared.c \
                        RISTSenderInterface.cpp
 
 LOCAL_CFLAGS 		+=  -Wno-multichar -fpermissive

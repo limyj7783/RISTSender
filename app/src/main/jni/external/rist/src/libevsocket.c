@@ -64,6 +64,8 @@ struct pollfd {
 #include "pthread-shim.h"
 #include "librist/udpsocket.h"
 
+#include <android/log.h>
+
 struct evsocket_event {
 	int fd;
 	short events;
@@ -215,8 +217,7 @@ static void rebuild_poll(struct evsocket_ctx *ctx)
 		 * perhaps provide a context-wide callback for errors.
 		 */
 		if (ctx->n_events > 0) {
-			rist_log_priv3( RIST_LOG_ERROR, "libevsocket, rebuild_poll: events are disabled (%d)\n",
-				ctx->n_events);
+			__android_log_print(ANDROID_LOG_ERROR, "RIST", "libevsocket, rebuild_poll: events are disabled (%d)", ctx->n_events);
 		}
 
 		ctx->n_events = 0;
@@ -247,8 +248,7 @@ static void serve_event(struct evsocket_ctx *ctx, int n)
 	}
 
 	if (n >= ctx->n_events) {
-		rist_log_priv3( RIST_LOG_ERROR, "libevsocket, serve_event: Invalid event %d >= %d\n",
-			n, ctx->n_events);
+		__android_log_print(ANDROID_LOG_ERROR, "RIST", "libevsocket, serve_event: Invalid event %d >= %d", n, ctx->n_events);
 		return;
 	}
 
@@ -317,8 +317,7 @@ int evsocket_loop_single(struct evsocket_ctx *ctx, int timeout, int max_events)
 	}
 
 	if (ctx->n_events < 1) {
-		rist_log_priv3( RIST_LOG_ERROR, "libevsocket, evsocket_loop_single: no events (%d)\n",
-			ctx->n_events);
+		__android_log_print(ANDROID_LOG_ERROR, "RIST", "libevsocket, evsocket_loop_single: no events (%d)", ctx->n_events);
 		retval = -3;
 		goto loop_error;
 	}
@@ -326,8 +325,7 @@ int evsocket_loop_single(struct evsocket_ctx *ctx, int timeout, int max_events)
 	pollret = poll(ctx->pfd, ctx->n_events, timeout);
 	if (pollret <= 0) {
 		if (pollret < 0) {
-			rist_log_priv3( RIST_LOG_ERROR, "libevsocket, evsocket_loop: poll returned %d, n_events = %d, error = %d\n",
-				pollret, ctx->n_events, errno);
+			__android_log_print(ANDROID_LOG_ERROR, "RIST", "libevsocket, evsocket_loop: poll returned %d, n_events = %d, error = %d", pollret, ctx->n_events, errno);
 			retval = -4;
 			goto loop_error;
 		}
