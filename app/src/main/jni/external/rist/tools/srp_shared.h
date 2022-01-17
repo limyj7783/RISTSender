@@ -5,8 +5,16 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
+
+#ifdef __cplusplus
+extern "C"
+{
+
+#endif
+
 #include <stddef.h>
 #include <stdbool.h>
+
 
 void user_verifier_lookup(char * username,
 							size_t *verifier_len, char **verifier,
@@ -15,3 +23,7 @@ void user_verifier_lookup(char * username,
 							char **n_modulus_ascii,
 							char **generator_ascii,
 							void *user_data);
+
+#ifdef __cplusplus
+}
+#endif

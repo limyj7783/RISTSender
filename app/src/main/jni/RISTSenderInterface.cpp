@@ -51,24 +51,24 @@ struct rist_sender_args {
 
 JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_getTestValue(JNIEnv *env, jobject thiz)
 {
-    return 10;
+    return 20;
 }
 
-JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_Initialize(JNIEnv *env, jobject thiz)
+JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_SendStart(JNIEnv *env, jobject thiz, jstring url, jint port)
 {
 	int c;
 	int option_index;
 	struct rist_callback_object callback_object[MAX_INPUT_COUNT] = { {0} };
 	struct evsocket_event *event[MAX_INPUT_COUNT];
-	char *inputurl = NULL;
-	char *outputurl = NULL;
+	char *inputurl = "'udp://@127.0.0.1:8192'";
+	char *outputurl = "rist://123.123.123.123:8200?cname=SENDER01&bandwidth=2560000";
 	char *oobtun = NULL;
 	char *shared_secret = NULL;
 	int buffer_size = 0;
 	int encryption_type = 0;
 	int statsinterval = 1000;
-	enum rist_profile profile = RIST_PROFILE_SIMPLE;
-	enum rist_log_level loglevel = RIST_LOG_INFO;
+	enum rist_profile profile = 0;
+	enum rist_log_level loglevel = 4;
 	bool npd = false;
 	int faststart = 0;
 	struct rist_sender_args peer_args;
@@ -78,18 +78,7 @@ JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_Initialize(JNIEnv *env, 
 
 	for (size_t i = 0; i < MAX_INPUT_COUNT; i++)
 		event[i] = NULL;
-/*
-#ifdef _WIN32
-#define STDERR_FILENO 2
-    signal(SIGINT, intHandler);
-    signal(SIGTERM, intHandler);
-    signal(SIGABRT, intHandler);
-#else
-	struct sigaction act = { {0} };
-	act.sa_handler = intHandler;
-	sigaction(SIGINT, &act, NULL);
-#endif
-*/
+
 	// Default log settings
     struct rist_logging_settings *log_ptr = &logging_settings;
     if (rist_logging_set(&log_ptr, loglevel, NULL, NULL, NULL, stderr) != 0) {
@@ -97,7 +86,7 @@ JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_Initialize(JNIEnv *env, 
       exit(1);
 	}
 
-	rist_log(&logging_settings, RIST_LOG_INFO, "Starting ristsender version: %s libRIST library: %s API version: %s\n", LIBRIST_VERSION, librist_version(), librist_api_version());
+    __android_log_print(ANDROID_LOG_INFO, "RIST" , "Starting ristsender version: %s libRIST library: %s API version: %s", LIBRIST_VERSION, librist_version(), librist_api_version());
 
 	if (profile == RIST_PROFILE_SIMPLE || faststart > 0)
     	peer_connected_count = 1;
@@ -130,99 +119,116 @@ JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_Initialize(JNIEnv *env, 
 
 		// First parse extra url and parameters
 		if (rist_parse_udp_address2(inputtoken, &udp_config)) {
-			rist_log(&logging_settings, RIST_LOG_ERROR, "Could not parse inputurl %s\n", inputtoken);
-			//goto next;
+			__android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not parse inputurl %s", inputtoken);
 		}
+        else
+        {
+		    // Check for duplicate stream-ids and reject the entire config if we have any dups
+		    bool found_empty = false;
 
-		// Check for duplicate stream-ids and reject the entire config if we have any dups
-		bool found_empty = false;
+		    for (size_t j = 0; j < MAX_INPUT_COUNT; j++) {
+		    	if (stream_id_check[j] == -1 && !found_empty) {
+		    		stream_id_check[j] = (int32_t)udp_config->stream_id;
+		    		__android_log_print(ANDROID_LOG_INFO, "RIST", "Assigning stream-id %d to this input", udp_config->stream_id);
+		    		found_empty = true;
+		    	} else if ((uint16_t)stream_id_check[j] == udp_config->stream_id) {
+		    		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Every input must have a unique stream-id (%d) when you multiplex", udp_config->stream_id);
+		    		goto shutdown;
+		    	}
+		    }
 
-		for (size_t j = 0; j < MAX_INPUT_COUNT; j++) {
-			if (stream_id_check[j] == -1 && !found_empty) {
-				stream_id_check[j] = (int32_t)udp_config->stream_id;
-				rist_log(&logging_settings, RIST_LOG_INFO, "Assigning stream-id %d to this input\n", udp_config->stream_id);
-				found_empty = true;
-			} else if ((uint16_t)stream_id_check[j] == udp_config->stream_id) {
-				rist_log(&logging_settings, RIST_LOG_ERROR, "Every input must have a unique stream-id (%d) when you multiplex\n", udp_config->stream_id);
-				goto shutdown;
-			}
-		}
+		    // Setup the output rist objects (a brand new instance per receiver)
+		    char *saveptroutput;
+		    char *tmpoutputurl = malloc(strlen(outputurl) +1);
+		    strcpy(tmpoutputurl, outputurl);
+		    char *outputtoken = strtok_r(tmpoutputurl, ",", &saveptroutput);
 
-		// Setup the output rist objects (a brand new instance per receiver)
-		char *saveptroutput;
-		char *tmpoutputurl = malloc(strlen(outputurl) +1);
-		strcpy(tmpoutputurl, outputurl);
-		char *outputtoken = strtok_r(tmpoutputurl, ",", &saveptroutput);
-		// All output peers should be on the same context per receiver
-		if (rist_sender_create(&callback_object[i].sender_ctx, peer_args.profile, 0, &logging_settings) != 0) {
-			rist_log(&logging_settings, RIST_LOG_ERROR, "Could not create rist sender context\n");
-			break;
-		}
-		if (npd) {
-			if (profile == RIST_PROFILE_SIMPLE)
-				rist_log(&logging_settings, RIST_LOG_INFO, "NULL packet deletion enabled on SIMPLE profile. This is non-compliant but might work if receiver supports it (librist does)\n");
-			else
-				rist_log(&logging_settings, RIST_LOG_INFO, "NULL packet deletion enabled. Support for this feature is not guaranteed to be present on receivers. Please make sure the receiver supports it (librist does)\n");
-			if (rist_sender_npd_enable(callback_object[i].sender_ctx) != 0) {
-				rist_log(&logging_settings, RIST_LOG_ERROR, "Failed to enable null packet deletion\n");
-			}
-		}
-		for (size_t j = 0; j < MAX_OUTPUT_COUNT; j++) {
-			peer_args.token = outputtoken;
-			peer_args.ctx = callback_object[i].sender_ctx;
-			peer_args.stream_id = udp_config->stream_id;
-			struct rist_peer *peer = setup_rist_peer(&peer_args);
-			if (peer == NULL)
-				goto shutdown;
+		    // All output peers should be on the same context per receiver
+		    if (rist_sender_create(&callback_object[i].sender_ctx, peer_args.profile, 0, &logging_settings) != 0) {
+		    	__android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not create rist sender context");
+		    	break;
+		    }
+		    if (npd) {
+		    	if (profile == RIST_PROFILE_SIMPLE)
+		    	{
+    		    	__android_log_print(ANDROID_LOG_INFO, "RIST", "NULL packet deletion enabled on SIMPLE profile. This is non-compliant but might work if receiver supports it (librist does)");
+		    	}
+		    	else
+		    	{
+		    		__android_log_print(ANDROID_LOG_INFO, "RIST", "NULL packet deletion enabled. Support for this feature is not guaranteed to be present on receivers. Please make sure the receiver supports it (librist does)");
+		    	}
 
-			outputtoken = strtok_r(NULL, ",", &saveptroutput);
-			if (!outputtoken)
-				break;
-		}
-		free(tmpoutputurl);
+		    	if (rist_sender_npd_enable(callback_object[i].sender_ctx) != 0) {
+		    		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Failed to enable null packet deletion");
+		    	}
+		    }
 
-		if (strcmp(udp_config->prefix, "rist") == 0) {
-			// This is a rist input (new context for each listener)
-			if (rist_receiver_create(&callback_object[i].receiver_ctx, peer_args.profile, &logging_settings) != 0) {
-				rist_log(&logging_settings, RIST_LOG_ERROR, "Could not create rist receiver context\n");
-				goto next;
-			}
-			peer_args.token = inputtoken;
-			peer_args.ctx = callback_object[i].receiver_ctx;
-			struct rist_peer *peer = setup_rist_peer(&peer_args);
-			if (peer == NULL)
-				atleast_one_socket_opened = true;
-			rist_udp_config_free2(&udp_config);
-			udp_config = NULL;
-		}
-		else {
-			if(!evctx)
-				evctx = evsocket_create();
-			// This is a udp input, i.e. 127.0.0.1:5000
-			char hostname[200] = {0};
-			int inputlisten;
-			uint16_t inputport;
-			if (udpsocket_parse_url((void *)udp_config->address, hostname, 200, &inputport, &inputlisten) || !inputport || strlen(hostname) == 0) {
-				rist_log(&logging_settings, RIST_LOG_ERROR, "Could not parse input url %s\n", inputtoken);
-				goto next;
-			}
-			rist_log(&logging_settings, RIST_LOG_INFO, "URL parsed successfully: Host %s, Port %d\n", (char *) hostname, inputport);
+		    for (size_t j = 0; j < MAX_OUTPUT_COUNT; j++) {
+		    	peer_args.token = outputtoken;
+		    	__android_log_print(ANDROID_LOG_DEBUG, "RIST", "peer_args.token = %s", outputtoken);
+		    	peer_args.ctx = callback_object[i].sender_ctx;
+		    	peer_args.stream_id = udp_config->stream_id;
+		    	struct rist_peer *peer = setup_rist_peer(&peer_args);
+		    	if (peer == NULL)
+		    	{
+    		    	__android_log_print(ANDROID_LOG_DEBUG, "RIST", "STEP2.7");
+                    goto shutdown;
+		    	}
 
-			callback_object[i].sd = udpsocket_open_bind(hostname, inputport, udp_config->miface);
-			if (callback_object[i].sd < 0) {
-				rist_log(&logging_settings, RIST_LOG_ERROR, "Could not bind to: Host %s, Port %d, miface %s.\n",
-					(char *) hostname, inputport, udp_config->miface);
-				goto next;
-			} else {
-				udpsocket_set_nonblocking(callback_object[i].sd);
-				rist_log(&logging_settings, RIST_LOG_INFO, "Input socket is open and bound %s:%d\n", (char *) hostname, inputport);
-				atleast_one_socket_opened = true;
-			}
-			callback_object[i].udp_config = udp_config;
-			udp_config = NULL;
-			callback_object[i].evctx = evctx;
-			event[i] = evsocket_addevent(callback_object[i].evctx, callback_object[i].sd, EVSOCKET_EV_READ, input_udp_recv, input_udp_sockerr,
-				(void *)&callback_object[i]);
+		    	outputtoken = strtok_r(NULL, ",", &saveptroutput);
+		    	__android_log_print(ANDROID_LOG_DEBUG, "RIST", "STEP2.8");
+		    	if (!outputtoken)
+		    		break;
+		    }
+		    __android_log_print(ANDROID_LOG_DEBUG, "RIST", "STEP2.9");
+		    free(tmpoutputurl);
+
+            __android_log_print(ANDROID_LOG_DEBUG, "RIST", "STEP3");
+
+		    if (strcmp(udp_config->prefix, "rist") == 0) {
+		    	// This is a rist input (new context for each listener)
+		    	if (rist_receiver_create(&callback_object[i].receiver_ctx, peer_args.profile, &logging_settings) != 0) {
+		    		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not create rist receiver context");
+		    		goto next;
+		    	}
+		    	peer_args.token = inputtoken;
+		    	peer_args.ctx = callback_object[i].receiver_ctx;
+		    	struct rist_peer *peer = setup_rist_peer(&peer_args);
+		    	if (peer == NULL)
+		    		atleast_one_socket_opened = true;
+		    	rist_udp_config_free2(&udp_config);
+		    	udp_config = NULL;
+		    }
+		    else {
+		    	if(!evctx)
+		    		evctx = evsocket_create();
+		    	// This is a udp input, i.e. 127.0.0.1:5000
+		    	char hostname[200] = {0};
+		    	int inputlisten;
+		    	uint16_t inputport;
+		    	if (udpsocket_parse_url((void *)udp_config->address, hostname, 200, &inputport, &inputlisten) || !inputport || strlen(hostname) == 0) {
+		    		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not parse input url %s", inputtoken);
+		    		goto next;
+		    	}
+		    	__android_log_print(ANDROID_LOG_INFO, "RIST", "URL parsed successfully: Host %s, Port %d", (char *) hostname, inputport);
+
+		    	callback_object[i].sd = udpsocket_open_bind(hostname, inputport, udp_config->miface);
+		    	if (callback_object[i].sd < 0) {
+		    		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not bind to: Host %s, Port %d, miface %s.", (char *) hostname, inputport, udp_config->miface);
+		    		goto next;
+		    	} else {
+		    		udpsocket_set_nonblocking(callback_object[i].sd);
+		    		__android_log_print(ANDROID_LOG_INFO, "RIST", "Input socket is open and bound %s:%d", (char *) hostname, inputport);
+		    		atleast_one_socket_opened = true;
+		    	}
+		    	callback_object[i].udp_config = udp_config;
+		    	udp_config = NULL;
+		    	callback_object[i].evctx = evctx;
+		    	event[i] = evsocket_addevent(callback_object[i].evctx, callback_object[i].sd, EVSOCKET_EV_READ, input_udp_recv, input_udp_sockerr,
+		    		(void *)&callback_object[i]);
+		    }
+
+		    __android_log_print(ANDROID_LOG_DEBUG, "RIST", "STEP10");
 		}
 next:
 		inputtoken = strtok_r(NULL, ",", &saveptrinput);
@@ -235,22 +241,24 @@ next:
 	if (evctx && pthread_create(&thread_main_loop[0], NULL, input_loop, (void *)callback_object) != 0)
 	{
 		fprintf(stderr, "Could not start udp receiver thread\n");
+		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not start udp receiver thread");
 		goto shutdown;
 	}
 	thread_started[0] = true;
 
 	for (size_t i = 0; i < MAX_INPUT_COUNT; i++) {
 		if (callback_object[i].sender_ctx && rist_start(callback_object[i].sender_ctx) == -1) {
-			rist_log(&logging_settings, RIST_LOG_ERROR, "Could not start rist sender\n");
+			__android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not start rist sender");
 			goto shutdown;
 		}
 		if (callback_object[i].receiver_ctx && rist_start(callback_object[i].receiver_ctx) == -1) {
-			rist_log(&logging_settings, RIST_LOG_ERROR, "Could not start rist receiver\n");
+			__android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not start rist receiver");
 			goto shutdown;
 		}
 		if (callback_object[i].receiver_ctx && pthread_create(&thread_main_loop[i+1], NULL, input_loop, (void *)callback_object) != 0)
 		{
 			fprintf(stderr, "Could not start send rist receiver thread\n");
+			__android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not start send rist receiver thread");
 			goto shutdown;
 		}
 		thread_started[i+1] = true;
@@ -303,29 +311,30 @@ shutdown:
 static struct rist_peer* setup_rist_peer(struct rist_sender_args *setup)
 {
 	if (rist_stats_callback_set(setup->ctx, setup->statsinterval, cb_stats, NULL) == -1) {
-		rist_log(&logging_settings, RIST_LOG_ERROR, "Could not enable stats callback\n");
+		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not enable stats callback");
 		return NULL;
 	}
 
 	if (rist_auth_handler_set(setup->ctx, cb_auth_connect, cb_auth_disconnect, setup->ctx) < 0) {
-		rist_log(&logging_settings, RIST_LOG_ERROR, "Could not initialize rist auth handler\n");
+	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not initialize rist auth handler");
 		return NULL;
 	}
 
 	if (rist_connection_status_callback_set(setup->ctx, connection_status_callback, NULL) == -1) {
 		rist_log(&logging_settings, RIST_LOG_ERROR, "Could not initialize rist connection status callback\n");
+		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not initialize rist connection status callback");
 		return NULL;
 	}
 
 	if (setup->profile != RIST_PROFILE_SIMPLE) {
 		if (rist_oob_callback_set(setup->ctx, cb_recv_oob, setup->ctx) == -1) {
-			rist_log(&logging_settings, RIST_LOG_ERROR, "Could not enable out-of-band data\n");
+			__android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not enable out-of-band data");
 			return NULL;
 		}
 	}
 
 	if (rist_stats_callback_set(setup->ctx, setup->statsinterval, cb_stats, NULL) == -1) {
-		rist_log(&logging_settings, RIST_LOG_ERROR, "Could not enable stats callback\n");
+		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not enable stats callback");
 		return NULL;
 	}
 
@@ -333,7 +342,7 @@ static struct rist_peer* setup_rist_peer(struct rist_sender_args *setup)
 	struct rist_peer_config *peer_config_link = NULL;
 	if (rist_parse_address2(setup->token, (void *)&peer_config_link))
 	{
-		rist_log(&logging_settings, RIST_LOG_ERROR, "Could not parse peer options for sender: %s\n", setup->token);
+		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not parse peer options for sender: %s", setup->token);
 		return NULL;
 	}
 
@@ -352,7 +361,7 @@ static struct rist_peer* setup_rist_peer(struct rist_sender_args *setup)
 	}
 	if (setup->stream_id) {
 		if (setup->stream_id % 2 != 0) {
-			rist_log(&logging_settings, RIST_LOG_ERROR, "Error parsing peer options for sender: %s, stream-id (%d) must be even!\n\n", setup->token, setup->stream_id);
+		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Error parsing peer options for sender: %s, stream-id (%d) must be even!", setup->token, setup->stream_id);
 			return NULL;
 		}
 		else {
@@ -361,14 +370,14 @@ static struct rist_peer* setup_rist_peer(struct rist_sender_args *setup)
 	}
 
 	/* Print config */
-	rist_log(&logging_settings, RIST_LOG_INFO, "Link configured with maxrate=%d bufmin=%d bufmax=%d reorder=%d rttmin=%d rttmax=%d congestion_control=%d min_retries=%d max_retries=%d\n",
-		peer_config_link->recovery_maxbitrate, peer_config_link->recovery_length_min, peer_config_link->recovery_length_max,
-		peer_config_link->recovery_reorder_buffer, peer_config_link->recovery_rtt_min, peer_config_link->recovery_rtt_max,
-		peer_config_link->congestion_control_mode, peer_config_link->min_retries, peer_config_link->max_retries);
+    __android_log_print(ANDROID_LOG_INFO, "RIST", "Link configured with maxrate=%d bufmin=%d bufmax=%d reorder=%d rttmin=%d rttmax=%d congestion_control=%d min_retries=%d max_retries=%d",
+                                                  		peer_config_link->recovery_maxbitrate, peer_config_link->recovery_length_min, peer_config_link->recovery_length_max,
+                                                  		peer_config_link->recovery_reorder_buffer, peer_config_link->recovery_rtt_min, peer_config_link->recovery_rtt_max,
+                                                  		peer_config_link->congestion_control_mode, peer_config_link->min_retries, peer_config_link->max_retries);
 
 	struct rist_peer *peer;
 	if (rist_peer_create(setup->ctx, &peer, peer_config_link) == -1) {
-		rist_log(&logging_settings, RIST_LOG_ERROR, "Could not add peer connector to %s\n", peer_config_link->address);
+		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not add peer connector to %s", peer_config_link->address);
 		free((void *)peer_config_link);
 		return NULL;
 	}
@@ -380,17 +389,23 @@ static struct rist_peer* setup_rist_peer(struct rist_sender_args *setup)
 		{
 			srp_error = rist_enable_eap_srp(peer, peer_config_link->srp_username, peer_config_link->srp_password, NULL, NULL);
 			if (srp_error)
-				rist_log(&logging_settings, RIST_LOG_WARN, "Error %d trying to enable SRP for peer\n", srp_error);
+			{
+				__android_log_print(ANDROID_LOG_WARN, "RIST", "Error %d trying to enable SRP for peer", srp_error);
+			}
 		}
 		if (srpfile)
 		{
 			srp_error = rist_enable_eap_srp(peer, NULL, NULL, user_verifier_lookup, srpfile);
 			if (srp_error)
-				rist_log(&logging_settings, RIST_LOG_WARN, "Error %d trying to enable SRP global authenticator, file %s\n", srp_error, srpfile);
+			{
+				__android_log_print(ANDROID_LOG_WARN, "RIST", "Error %d trying to enable SRP global authenticator, file %s", srp_error, srpfile);
+			}
 		}
 	}
 	else
-		rist_log(&logging_settings, RIST_LOG_WARN, "SRP Authentication is not available for Rist Simple Profile\n");
+	{
+		__android_log_print(ANDROID_LOG_WARN, "RIST", "SRP Authentication is not available for Rist Simple Profile\n");
+	}
 #endif
 
 	rist_peer_config_free2(&peer_config_link);
@@ -458,7 +473,9 @@ static void input_udp_recv(struct evsocket_ctx *evctx, int fd, short revents, vo
 	{
 		// EWOULDBLOCK = EAGAIN = 11 would be the most common recoverable error (if any)
 		if (errno != EWOULDBLOCK)
-			rist_log(&logging_settings, RIST_LOG_ERROR, "Input receive failed: errno=%d, ret=%d, socket=%d\n", errno, recv_bufsize, callback_object->sd);
+		{
+			__android_log_print(ANDROID_LOG_ERROR, "RIST", "Input receive failed: errno=%d, ret=%d, socket=%d", errno, recv_bufsize, callback_object->sd);
+		}
 	}
 }
 
@@ -468,7 +485,7 @@ static void input_udp_sockerr(struct evsocket_ctx *evctx, int fd, short revents,
 	RIST_MARK_UNUSED(evctx);
 	RIST_MARK_UNUSED(revents);
 	RIST_MARK_UNUSED(fd);
-	rist_log(&logging_settings, RIST_LOG_ERROR, "Socket error on sd=%d, stream-id=%d !\n", callback_object->sd, callback_object->udp_config->stream_id);
+	__android_log_print(ANDROID_LOG_ERROR, "RIST", "Socket error on sd=%d, stream-id=%d !\n", callback_object->sd, callback_object->udp_config->stream_id);
 }
 
 static PTHREAD_START_FUNC(input_loop, arg)
@@ -483,7 +500,9 @@ static PTHREAD_START_FUNC(input_loop, arg)
 			int queue_size = rist_receiver_data_read2(callback_object->receiver_ctx, &b, 5);
 			if (queue_size > 0) {
 				if (queue_size % 10 == 0 || queue_size > 50)
-					rist_log(&logging_settings, RIST_LOG_WARN, "Falling behind on rist_receiver_data_read: %d\n", queue_size);
+				{
+					__android_log_print(ANDROID_LOG_WARN, "RIST", "Falling behind on rist_receiver_data_read: %d", queue_size);
+				}
 				if (b && b->payload) {
 					if (peer_connected_count) {
 						int w = rist_sender_data_write(callback_object->sender_ctx, b);
@@ -506,7 +525,7 @@ static PTHREAD_START_FUNC(input_loop, arg)
 static int cb_stats(void *arg, const struct rist_stats *stats_container)
 {
 	(void)arg;
-	rist_log(&logging_settings, RIST_LOG_INFO, "%s\n\n", stats_container->stats_json);
+	__android_log_print(ANDROID_LOG_INFO, "RIST", "%s", stats_container->stats_json);
 	rist_stats_free(stats_container);
 	return 0;
 }
@@ -519,7 +538,7 @@ static int cb_auth_connect(void *arg, const char* connecting_ip, uint16_t connec
 	int message_len = snprintf(message, 200, "auth,%s:%d,%s:%d", connecting_ip, connecting_port, local_ip, local_port);
 	// To be compliant with the spec, the message must have an ipv4 header
 	int ret = oob_build_api_payload(buffer, (char *)connecting_ip, (char *)local_ip, message, message_len);
-	rist_log(&logging_settings, RIST_LOG_INFO,"Peer has been peer_connected_count, sending oob/api message: %s\n", message);
+	//__andorid_log_print(ANDROID_LOG_INFO, "RIST", "Peer has been peer_connected_count, sending oob/api message: %s", message);
 	struct rist_oob_block oob_block;
 	oob_block.peer = peer;
 	oob_block.payload = buffer;
@@ -554,7 +573,7 @@ static int cb_recv_oob(void *arg, const struct rist_oob_block *oob_block)
 	int message_len = 0;
 	char *message = oob_process_api_message((int)oob_block->payload_len, (char *)oob_block->payload, &message_len);
 	if (message) {
-		rist_log(&logging_settings, RIST_LOG_INFO,"Out-of-band api data received: %.*s\n", message_len, message);
+		__android_log_print(ANDROID_LOG_INFO, "RIST", "Out-of-band api data received: %.*s", message_len, message);
 	}
 	return 0;
 }

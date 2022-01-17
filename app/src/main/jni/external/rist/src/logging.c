@@ -18,6 +18,8 @@
 #include <windows.h>
 #endif
 
+#include <android/log.h>
+
 static struct {
 	struct rist_logging_settings settings;
 	bool logs_set;
@@ -76,13 +78,14 @@ static inline void rist_log_impl(struct rist_logging_settings *log_settings,
 		prefix = "[ERROR]";
 		break;
 	}
-	char *logmsg;
+	char *logmsg, *logmsg2;
 
-	ssize_t msglen;
+	ssize_t msglen, msglen2;
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	msglen = asprintf(&logmsg, "%d.%6.6d|%"PRIdPTR".%"PRIdPTR"|%s %s", (int)tv.tv_sec,
 			 (int)tv.tv_usec, receiver_id, sender_id, prefix, msg);
+ 	msglen2 = asprintf(&logmsg2, "%s", msg);
 	if (RIST_UNLIKELY(msglen <= 0)) {
 		fprintf(stderr, "[ERROR] Failed to format log message\n");
 		goto out;
@@ -93,6 +96,27 @@ static inline void rist_log_impl(struct rist_logging_settings *log_settings,
 		fputs(logmsg, log_settings->log_stream);
 		fflush(log_settings->log_stream);
 	}
+
+	switch (level) {
+	case RIST_LOG_DEBUG:
+		__android_log_print(ANDROID_LOG_DEBUG, "RIST", "%s", logmsg2);
+		break;
+	case RIST_LOG_INFO:
+		__android_log_print(ANDROID_LOG_INFO, "RIST", "%s", logmsg2);
+		break;
+	case RIST_LOG_NOTICE:
+		__android_log_print(ANDROID_LOG_INFO, "RIST", "%s", logmsg2);
+		break;
+	case RIST_LOG_WARN:
+		__android_log_print(ANDROID_LOG_WARN, "RIST", "%s", logmsg2);
+		break;
+	case RIST_LOG_ERROR:
+		__android_log_print(ANDROID_LOG_ERROR, "RIST", "%s", logmsg2);
+	default:
+		__android_log_print(ANDROID_LOG_UNKNOWN, "RIST", "%s", logmsg2);
+		break;
+	}
+
 	free(logmsg);
 out:
 	free(msg);
