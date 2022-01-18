@@ -14,6 +14,8 @@
 #endif
 #endif
 
+#include <android/log.h>
+
 /* Private functions */
 static const int yes = 1; // no = 0;
 
@@ -68,13 +70,16 @@ int udpsocket_set_optimal_buffer_size(int sd)
 {
 	uint32_t bufsize = UDPSOCKET_SOCK_BUFSIZE;
 	uint32_t current_recvbuf = udpsocket_get_buffer_size(sd);
+
 	if (current_recvbuf < bufsize){
 		setsockopt(sd, SOL_SOCKET, SO_RCVBUF, (char *)&bufsize, sizeof(uint32_t));
 		current_recvbuf = udpsocket_get_buffer_size(sd);
+
 #if defined(SO_RCVBUFFORCE)
 		if (current_recvbuf < bufsize){
 			setsockopt(sd, SOL_SOCKET, SO_RCVBUFFORCE, (char *)&bufsize, sizeof(uint32_t));
 			current_recvbuf = udpsocket_get_buffer_size(sd);
+
 		}
 #endif
 	}
@@ -83,10 +88,12 @@ int udpsocket_set_optimal_buffer_size(int sd)
 		bufsize = UDPSOCKET_SOCK_BUFSIZE/5;
 		setsockopt(sd, SOL_SOCKET, SO_RCVBUF, (char *)&bufsize, sizeof(uint32_t));
 		current_recvbuf = udpsocket_get_buffer_size(sd);
+
 #if defined(SO_RCVBUFFORCE)
 		if (current_recvbuf < bufsize){
 			setsockopt(sd, SOL_SOCKET, SO_RCVBUFFORCE, (char *)&bufsize, sizeof(uint32_t));
 			current_recvbuf = udpsocket_get_buffer_size(sd);
+
 		}
 #endif
 	}

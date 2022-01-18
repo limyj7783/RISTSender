@@ -300,7 +300,7 @@ LOCAL_SRC_FILES		+= external/rist/build/include/librist/librist_config.h \
                        external/rist/src/udpsocket.c \
                        external/rist/tools/srp_shared.c \
                        external/rist/tools/oob_shared.c \
-                       RISTSenderInterface.cpp
+                       RISTSenderInterface.cpp  \
 
 LOCAL_CFLAGS 		+=  -Wno-multichar -fpermissive
 LOCAL_LDLIBS  		+=	-landroid -llog -lEGL -lGLESv2 -lGLESv1_CM

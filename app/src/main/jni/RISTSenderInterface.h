@@ -14,6 +14,8 @@ JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_getTestValue(JNIEnv *, j
 JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_SendStart(JNIEnv *, jobject, jstring, jint);
 JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_SendStop(JNIEnv *, jobject);
 
+JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_ReceiveStart(JNIEnv *, jobject);
+
 static struct rist_peer* setup_rist_peer(struct rist_sender_args *setup);
 static void input_udp_recv(struct evsocket_ctx *evctx, int fd, short revents, void *arg);
 static void input_udp_sockerr(struct evsocket_ctx *evctx, int fd, short revents, void *arg);
