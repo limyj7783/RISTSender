@@ -1,5 +1,6 @@
 
 #include "RISTSenderInterface.h"
+#include <stdio.h>
 
 #if HAVE_MBEDTLS
 	FILE *srpfile = NULL;
@@ -60,7 +61,7 @@ JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_SendStart(JNIEnv *env, j
 	int option_index;
 	struct rist_callback_object callback_object[MAX_INPUT_COUNT] = { {0} };
 	struct evsocket_event *event[MAX_INPUT_COUNT];
-	char *inputurl = "'udp://@127.0.0.1:8192'";
+	char *inputurl = "udp://@127.0.0.1:8192";
 	char *outputurl = "rist://123.123.123.123:8200?cname=SENDER01&bandwidth=2560000";
 	char *oobtun = NULL;
 	char *shared_secret = NULL;
@@ -171,19 +172,14 @@ JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_SendStart(JNIEnv *env, j
 		    	struct rist_peer *peer = setup_rist_peer(&peer_args);
 		    	if (peer == NULL)
 		    	{
-    		    	__android_log_print(ANDROID_LOG_DEBUG, "RIST", "STEP2.7");
                     goto shutdown;
 		    	}
 
 		    	outputtoken = strtok_r(NULL, ",", &saveptroutput);
-		    	__android_log_print(ANDROID_LOG_DEBUG, "RIST", "STEP2.8");
 		    	if (!outputtoken)
 		    		break;
 		    }
-		    __android_log_print(ANDROID_LOG_DEBUG, "RIST", "STEP2.9");
 		    free(tmpoutputurl);
-
-            __android_log_print(ANDROID_LOG_DEBUG, "RIST", "STEP3");
 
 		    if (strcmp(udp_config->prefix, "rist") == 0) {
 		    	// This is a rist input (new context for each listener)
@@ -227,8 +223,6 @@ JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_SendStart(JNIEnv *env, j
 		    	event[i] = evsocket_addevent(callback_object[i].evctx, callback_object[i].sd, EVSOCKET_EV_READ, input_udp_recv, input_udp_sockerr,
 		    		(void *)&callback_object[i]);
 		    }
-
-		    __android_log_print(ANDROID_LOG_DEBUG, "RIST", "STEP10");
 		}
 next:
 		inputtoken = strtok_r(NULL, ",", &saveptrinput);
@@ -430,10 +424,12 @@ static void input_udp_recv(struct evsocket_ctx *evctx, int fd, short revents, vo
 	if (address_family == AF_INET6) {
 		socklen_t addrlen = sizeof(struct sockaddr_in6);
 		recv_bufsize = udpsocket_recvfrom(callback_object->sd, recv_buf, RIST_MAX_PACKET_SIZE, MSG_DONTWAIT, (struct sockaddr *) &addr6, &addrlen);
+		__android_log_print(ANDROID_LOG_DEBUG, "RIST_DEBUG", "INET6 buf_size : %d", recv_bufsize);
 		//addr = (struct sockaddr *) &addr6;
 	} else {
 		socklen_t addrlen = sizeof(struct sockaddr_in);
 		recv_bufsize = udpsocket_recvfrom(callback_object->sd, recv_buf, RIST_MAX_PACKET_SIZE, MSG_DONTWAIT, (struct sockaddr *) &addr4, &addrlen);
+		__android_log_print(ANDROID_LOG_DEBUG, "RIST_DEBUG", "buf_size : %d", recv_bufsize);
 		//addr = (struct sockaddr *) &addr4;
 	}
 
@@ -464,6 +460,7 @@ static void input_udp_recv(struct evsocket_ctx *evctx, int fd, short revents, vo
 		data_block.payload = recv_buf + offset;
 		data_block.payload_len = recv_bufsize - offset;
 		if (peer_connected_count) {
+		    __android_log_print(ANDROID_LOG_DEBUG, "RIST_DEBUG", "RECV_BUF : %s", recv_buf);
 			int w = rist_sender_data_write(callback_object->sender_ctx, &data_block);
 			// TODO: report error?
 			(void) w;

@@ -20,8 +20,6 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include <android/log.h>
-
 #define HASH_ALGO SRP_SHA256
 #define DIGEST_LENGTH SHA256_DIGEST_LENGTH
 #define EAP_LOG_PREFIX "[EAP-SRP] "
@@ -233,7 +231,7 @@ static int process_eap_request_srp_server_validator(struct eapsrp_ctx *ctx, uint
 	if (srp_user_is_authenticated(ctx->srp_user))
 	{
 		if (ctx->authentication_state < EAP_AUTH_STATE_SUCCESS)
-		    __android_log_print(ANDROID_LOG_INFO, "RIST", "[EAP-SRP] Succesfully authenticated");
+			rist_log_priv2(ctx->logging_settings, RIST_LOG_INFO, EAP_LOG_PREFIX"Succesfully authenticated\n");
 		ctx->authentication_state = EAP_AUTH_STATE_SUCCESS;
 		ctx->last_auth_timestamp = timestampNTP_u64();
 		ctx->tries = 0;
@@ -391,12 +389,12 @@ static int process_eap_response_client_validator(struct eapsrp_ctx *ctx, size_t 
 	srp_verifier_verify_session(ctx->srp_verifier, &pkt[4], (const unsigned char**)&bytes_HAMK);
 	if (!bytes_HAMK)
 	{
-	    __android_log_print(ANDROID_LOG_WARN, "RIST", "[EAP-SRP] Authentication failed for %s@%s", ctx->username, ctx->ip_string);
+		rist_log_priv2(ctx->logging_settings, RIST_LOG_WARN, EAP_LOG_PREFIX"Authentication failed for %s@%s\n", ctx->username, ctx->ip_string);
 		ctx->authentication_state = EAP_AUTH_STATE_FAILED;
 		ctx->tries++;
 		int ret = -254;
 		if (ctx->tries > EAP_AUTH_RETRY_MAX) {
-		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "[EAP-SRP] Authentication retry count exceeded");
+			rist_log_priv2(ctx->logging_settings, RIST_LOG_ERROR, EAP_LOG_PREFIX"Authentication retry count exceeded\n");
 			ret = -255;
 		}
 		uint8_t buf[EAPOL_EAP_HDRS_OFFSET];
@@ -418,7 +416,7 @@ static int process_eap_response_srp_server_validator(struct eapsrp_ctx *ctx)
 	if (srp_verifier_is_authenticated(ctx->srp_verifier))
 	{
 		if (ctx->authentication_state < EAP_AUTH_STATE_SUCCESS)
-		    __android_log_print(ANDROID_LOG_INFO, "RIST", "[EAP-SRP] Succesfully authenticated %s@%s", ctx->username, ctx->ip_string);
+			rist_log_priv2(ctx->logging_settings, RIST_LOG_INFO, EAP_LOG_PREFIX"Succesfully authenticated %s@%s\n", ctx->username, ctx->ip_string);
 		ctx->authentication_state = EAP_AUTH_STATE_SUCCESS;
 		ctx->last_auth_timestamp = timestampNTP_u64();
 		ctx->tries = 0;
@@ -494,7 +492,7 @@ static int process_eap_pkt(struct eapsrp_ctx *ctx, uint8_t pkt[], size_t len)
 			break;
 		case EAP_CODE_FAILURE:
 			eap_reset_data(ctx);
-			__android_log_print(ANDROID_LOG_ERROR, "RIST", "[EAP-SRP] Authentication failed");
+			rist_log_priv2(ctx->logging_settings, RIST_LOG_ERROR, EAP_LOG_PREFIX"Authentication failed\n");
 			return eap_start(ctx);//try to restart the process
 		default:
 			return -1;
@@ -726,14 +724,14 @@ int rist_enable_eap_srp(struct rist_peer *peer, const char *username, const char
 									   (const unsigned char **)&ctx->authenticator_bytes_verifier, &ctx->authenticator_len_verifier);
 			srp_session_delete(session);
 			userdata = (void *)ctx;
-			__android_log_print(ANDROID_LOG_INFO, "RIST", "[EAP-SRP] EAP Authentication enabled, role = authenticator, single user");
+			rist_log_priv2(ctx->logging_settings, RIST_LOG_INFO, EAP_LOG_PREFIX"EAP Authentication enabled, role = authenticator, single user\n");
 		}
 		else if (lookup_func == NULL) {
 			free(ctx);
 			return RIST_ERR_MISSING_CALLBACK_FUNCTION;
 		}
 		else
-		    __android_log_print(ANDROID_LOG_INFO, "RIST", "[EAP-SRP] EAP Authentication enabled, role = authenticator, srp file");
+			rist_log_priv2(ctx->logging_settings, RIST_LOG_INFO, EAP_LOG_PREFIX"EAP Authentication enabled, role = authenticator, srp file\n");
 		ctx->lookup_func = lookup_func;
 		ctx->lookup_func_userdata = userdata;
 		ctx->role = EAP_ROLE_AUTHENTICATOR;
@@ -763,7 +761,7 @@ int rist_enable_eap_srp(struct rist_peer *peer, const char *username, const char
 	strcpy(ctx->username, username);
 	strcpy(ctx->password, password);
 	peer->eap_ctx = ctx;
-	__android_log_print(ANDROID_LOG_INFO, "RIST", "[EAP-SRP] EAP Authentication enabled, role = authenticatee");
+	rist_log_priv2(ctx->logging_settings, RIST_LOG_INFO, EAP_LOG_PREFIX"EAP Authentication enabled, role = authenticatee\n");
 	eap_start(ctx);
 	return 0;
 }

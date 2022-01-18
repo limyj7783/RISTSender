@@ -11,8 +11,6 @@
 #include "udp-private.h"
 #include <assert.h>
 
-#include <android/log.h>
-
 void rist_receiver_missing(struct rist_flow *f, struct rist_peer *peer,uint64_t nack_time, uint32_t seq, uint32_t rtt)
 {
 	struct rist_missing_buffer *m = calloc(1, sizeof(*m));
@@ -80,7 +78,7 @@ void rist_flush_missing_flow_queue(struct rist_flow *flow)
 
 void rist_delete_flow(struct rist_receiver *ctx, struct rist_flow *f)
 {
-    __android_log_print(ANDROID_LOG_INFO, "RIST", "Triggering data output thread termination");
+	rist_log_priv(&ctx->common, RIST_LOG_INFO, "Triggering data output thread termination\n");
 	//This needs to be before the lock, as we may (happens rarely) fail to acquire it at all, due to output thread
 	//locking/unlocking too quickly.
 	atomic_store_explicit(&f->shutdown, 1, memory_order_release);
@@ -89,7 +87,7 @@ void rist_delete_flow(struct rist_receiver *ctx, struct rist_flow *f)
 	pthread_mutex_unlock(&f->mutex);
 	if (running)
 		pthread_join(f->receiver_thread, NULL);
-	__android_log_print(ANDROID_LOG_INFO, "RIST", "Resetting peer states");
+	rist_log_priv(&ctx->common, RIST_LOG_INFO, "Resetting peer states\n");
 	struct rist_peer *p = NULL;
 	size_t i = 0;
 	for (i = 0; i <f->peer_lst_len; i++)
@@ -127,20 +125,20 @@ void rist_delete_flow(struct rist_receiver *ctx, struct rist_flow *f)
 		peer = peer->next;
 	}
 
-    __android_log_print(ANDROID_LOG_INFO, "RIST", "Free flow peer list");
+	rist_log_priv(&ctx->common, RIST_LOG_INFO, "Free flow peer list\n");
 	f->peer_lst_len = 0;
 	free(f->peer_lst);
 	f->peer_lst = NULL;
 
-    __android_log_print(ANDROID_LOG_INFO, "RIST", "Deleting missing queue elements");
+	rist_log_priv(&ctx->common, RIST_LOG_INFO, "Deleting missing queue elements\n");
 	/* Delete all missing queue elements (if any) */
 	rist_flush_missing_flow_queue(f);
 
-    __android_log_print(ANDROID_LOG_INFO, "RIST", "Deleting output buffer data");
+	rist_log_priv(&ctx->common, RIST_LOG_INFO, "Deleting output buffer data\n");
 	/* Delete all buffer data (if any) */
 	empty_receiver_queue(f, &ctx->common);
 
-    __android_log_print(ANDROID_LOG_INFO, "RIST", "Freeing data fifo queue");
+	rist_log_priv(&ctx->common, RIST_LOG_INFO, "Freeing data fifo queue\n");
 	for (i = 0; i < ctx->fifo_queue_size; i++)
 	{
 		if (f->dataout_fifo_queue[i])
@@ -150,7 +148,7 @@ void rist_delete_flow(struct rist_receiver *ctx, struct rist_flow *f)
 	}
 	free(f->dataout_fifo_queue);
 	// Delete flow
-	__android_log_print(ANDROID_LOG_INFO, "RIST", "Deleting flow");
+	rist_log_priv(&ctx->common, RIST_LOG_INFO, "Deleting flow\n");
 	struct rist_flow **prev_flow = &ctx->common.FLOWS;
 	struct rist_flow *current_flow = *prev_flow;
 	while (current_flow)
@@ -188,8 +186,8 @@ static struct rist_flow *create_flow(struct rist_receiver *ctx, uint32_t flow_id
 {
 	struct rist_flow *f = calloc(1, sizeof(*f));
 	if (!f) {
-	    int size = sizeof(*f) / 1000000;
-	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not create receiver buffer of size %d MB, OOM", size);
+		rist_log_priv(&ctx->common, RIST_LOG_ERROR,
+			"Could not create receiver buffer of size %d MB, OOM\n", sizeof(*f) / 1000000);
 		return NULL;
 	}
 
@@ -201,7 +199,7 @@ static struct rist_flow *create_flow(struct rist_receiver *ctx, uint32_t flow_id
 	int ret = pthread_cond_init(&f->condition, NULL);
 	if (ret) {
 		free(f);
-		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Error %d calling pthread_cond_init", ret);
+		rist_log_priv(&ctx->common, RIST_LOG_ERROR, "Error %d calling pthread_cond_init\n", ret);
 		return NULL;
 	}
 
@@ -209,7 +207,7 @@ static struct rist_flow *create_flow(struct rist_receiver *ctx, uint32_t flow_id
 	if (ret){
 		pthread_cond_destroy(&f->condition);
 		free(f);
-		__android_log_print(ANDROID_LOG_ERROR, "RIST", "Error %d calling pthread_mutex_init", ret);
+		rist_log_priv(&ctx->common, RIST_LOG_ERROR, "Error %d calling pthread_mutex_init\n", ret);
 		return NULL;
 	}
 
@@ -261,7 +259,7 @@ int rist_receiver_associate_flow(struct rist_peer *p, uint32_t flow_id)
 	} else
 	{
 		if (!p->parent) {
-		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "FLOW #%"PRIu32" cannot be created yet because this peer has no parent", flow_id);
+			rist_log_priv(&ctx->common, RIST_LOG_ERROR, "FLOW #%"PRIu32" cannot be created yet because this peer has no parent\n", flow_id);
 			return -1;
 		}
 		f = p->parent->flow;
@@ -284,14 +282,16 @@ int rist_receiver_associate_flow(struct rist_peer *p, uint32_t flow_id)
 		else
 			f->receiver_queue_max = RIST_SERVER_QUEUE_BUFFERS;
 
-        __android_log_print(ANDROID_LOG_INFO, "RIST", "FLOW #%"PRIu32" created (short=%d)", flow_id, f->short_seq);
+		rist_log_priv(&ctx->common, RIST_LOG_INFO, "FLOW #%"PRIu32" created (short=%d)\n", flow_id, f->short_seq);
 	} else {
 		/* double check that this peer is not a member of this flow already */
 		if (flow_has_peer(f, flow_id, p->adv_peer_id)) {
-		    rist_log_priv(&ctx->common, RIST_LOG_INFO, "FLOW #%"PRIu32", Existing peer (id=%"PRIu32") re-joining existing flow ...\n", flow_id, p);
+			rist_log_priv(&ctx->common, RIST_LOG_INFO, "FLOW #%"PRIu32", Existing peer (id=%"PRIu32") re-joining existing flow ...\n",
+				flow_id, p);
 			ret = 2;
 		} else {
-			rist_log_priv(&ctx->common, RIST_LOG_INFO, "FLOW #%"PRIu32": New peer (id=%u) joining existing flow ...\n", flow_id, p->adv_peer_id);
+			rist_log_priv(&ctx->common, RIST_LOG_INFO, "FLOW #%"PRIu32": New peer (id=%u) joining existing flow ...\n",
+				flow_id, p->adv_peer_id);
 			ret = 1;
 		}
 	}
@@ -328,9 +328,12 @@ int rist_receiver_associate_flow(struct rist_peer *p, uint32_t flow_id)
 		f->peer_lst_len++;
 	}
 
-	rist_log_priv(&ctx->common, RIST_LOG_INFO, "Peer with id #%u associated with flow #%" PRIu64 "\n", p->adv_peer_id, flow_id);
+	rist_log_priv(&ctx->common, RIST_LOG_INFO,
+		"Peer with id #%u associated with flow #%" PRIu64 "\n", p->adv_peer_id, flow_id);
 
-	rist_log_priv(&ctx->common, RIST_LOG_INFO, "Flow #%" PRIu64 " has now %d peers.\n", flow_id, f->peer_lst_len);
+	rist_log_priv(&ctx->common, RIST_LOG_INFO,
+		"Flow #%" PRIu64 " has now %d peers.\n", flow_id, f->peer_lst_len);
+
 	return ret;
 }
 

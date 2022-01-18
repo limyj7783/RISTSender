@@ -25,7 +25,6 @@
 #include "stdio-shim.h"
 #include <assert.h>
 
-#include <android/log.h>
 
 static void rist_peer_recv(struct evsocket_ctx *evctx, int fd, short revents, void *arg);
 static void rist_peer_sockerr(struct evsocket_ctx *evctx, int fd, short revents, void *arg);
@@ -271,9 +270,10 @@ static void init_peer_settings(struct rist_peer *peer)
 			(sizeof(struct rist_gre_seq) + sizeof(struct rist_rtp_hdr) + sizeof(uint32_t));
 		peer->eight_times_rtt = peer->config.recovery_rtt_min * 8;
 
-        __android_log_print(ANDROID_LOG_INFO, "RIST", "New peer with id #%"PRIu32" was configured with maxrate=%d/%d bufmin=%d bufmax=%d reorder=%d rttmin=%d rttmax=%d congestion_control=%d min_retries=%d max_retries=%d",
-            peer->adv_peer_id, peer->config.recovery_maxbitrate, peer->config.recovery_maxbitrate_return, peer->config.recovery_length_min, peer->config.recovery_length_max, peer->config.recovery_reorder_buffer,
-            peer->config.recovery_rtt_min, peer->config.recovery_rtt_max, peer->config.congestion_control_mode, peer->config.min_retries, peer->config.max_retries);
+		rist_log_priv(get_cctx(peer), RIST_LOG_INFO,
+				"New peer with id #%"PRIu32" was configured with maxrate=%d/%d bufmin=%d bufmax=%d reorder=%d rttmin=%d rttmax=%d congestion_control=%d min_retries=%d max_retries=%d\n",
+				peer->adv_peer_id, peer->config.recovery_maxbitrate, peer->config.recovery_maxbitrate_return, peer->config.recovery_length_min, peer->config.recovery_length_max, peer->config.recovery_reorder_buffer,
+				peer->config.recovery_rtt_min, peer->config.recovery_rtt_max, peer->config.congestion_control_mode, peer->config.min_retries, peer->config.max_retries);
 	}
 	else {
 		assert(peer->sender_ctx != NULL);
@@ -293,7 +293,8 @@ static void init_peer_settings(struct rist_peer *peer)
 			max_nacksperloop = max_nacksperloop  * 2;
 			if (max_nacksperloop > ctx->max_nacksperloop) {
 				ctx->max_nacksperloop = (uint32_t)max_nacksperloop;
-				__android_log_print(ANDROID_LOG_INFO, "RIST", "Setting max nacks per cycle to %"PRIu32"", max_nacksperloop);
+				rist_log_priv(&ctx->common, RIST_LOG_INFO, "Setting max nacks per cycle to %"PRIu32"\n",
+				max_nacksperloop);
 			}
 		}
 
@@ -305,7 +306,7 @@ static void init_peer_settings(struct rist_peer *peer)
 		/* Set target recover size (buffer) */
 		if ((peer->config.recovery_length_max + (2 * peer->config.recovery_rtt_max)) > ctx->sender_recover_min_time) {
 			ctx->sender_recover_min_time = peer->config.recovery_length_max + (2 * peer->config.recovery_rtt_max);
-			__android_log_print(ANDROID_LOG_INFO, "RIST", "Setting buffer size to %zums (Max buffer size + 2 * Max RTT)", ctx->sender_recover_min_time);
+			rist_log_priv(&ctx->common, RIST_LOG_INFO, "Setting buffer size to %zums (Max buffer size + 2 * Max RTT)\n", ctx->sender_recover_min_time);
 			// TODO: adjust this size based on the dynamic RTT measurement
 		}
 
@@ -380,7 +381,7 @@ static uint64_t receiver_calculate_packet_time(struct rist_flow *f, const uint64
 				f->time_offset += convertRTPtoNTP(payload_type, 0, UINT32_MAX);
 			else
 				f->time_offset += ((uint64_t)UINT32_MAX << 32) / RTP_PTYPE_MPEGTS_CLOCKHZ;
-            rist_log_priv(get_cctx(f->peer_lst[0]), RIST_LOG_INFO, "Clock wrapped, old offset: %" PRId64 " new offset %" PRId64 "\n", f->time_offset / RIST_CLOCK, f->time_offset_old / RIST_CLOCK);
+			rist_log_priv(get_cctx(f->peer_lst[0]), RIST_LOG_INFO, "Clock wrapped, old offset: %" PRId64 " new offset %" PRId64 "\n", f->time_offset / RIST_CLOCK, f->time_offset_old / RIST_CLOCK);
 			f->offset_recalc_sample_count = 0;
 			f->max_source_time = 0;
 			f->time_offset_changed_ts = now;
@@ -407,7 +408,7 @@ static int receiver_insert_queue_packet(struct rist_flow *f, struct rist_peer *p
 	   */
 	f->receiver_queue[idx] = rist_new_buffer(get_cctx(peer), buf, len, RIST_PAYLOAD_TYPE_DATA_RAW, seq, source_time, src_port, dst_port);
 	if (RIST_UNLIKELY(!f->receiver_queue[idx])) {
-	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not create packet buffer inside receiver buffer, OOM, decrease max bitrate or buffer time length");
+		rist_log_priv(get_cctx(peer), RIST_LOG_ERROR, "Could not create packet buffer inside receiver buffer, OOM, decrease max bitrate or buffer time length\n");
 		return -1;
 	}
 	f->receiver_queue[idx]->peer = peer;
@@ -446,9 +447,13 @@ static inline void receiver_mark_missing(struct rist_flow *f, struct rist_peer *
 		if (RIST_UNLIKELY(peer->buffer_bloat_active || f->missing_counter > peer->missing_counter_max))
 		{
 			if (f->missing_counter > peer->missing_counter_max)
-			    __android_log_print(ANDROID_LOG_DEBUG, "RIST","Retry buffer is already too large (%d) for the configured bandwidth ... ignoring missing packet(s).", f->missing_counter);
+				rist_log_priv(get_cctx(peer), RIST_LOG_DEBUG,
+					"Retry buffer is already too large (%d) for the configured "
+					"bandwidth ... ignoring missing packet(s).\n",
+					f->missing_counter);
 			if (peer->buffer_bloat_active)
-			    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Link has collapsed. Not queuing new retries until it recovers.");
+				rist_log_priv(get_cctx(peer), RIST_LOG_ERROR,
+					"Link has collapsed. Not queuing new retries until it recovers.\n");
 			break;
 		}
 		rist_receiver_missing(f, peer, nack_time, missing_seq, rtt);
@@ -485,7 +490,8 @@ static void recalculate_clock_offset(struct rist_flow *flow)
 		diff = flow->time_offset - median_offset;
 	else
 		diff = median_offset - flow->time_offset;
-	rist_log_priv2(flow->logging_settings, RIST_LOG_DEBUG, "Recalculated clock offset, old offset: %lu, new offset: %lu difference: %c%lu usec\n", flow->time_offset, median_offset, negative? '-': '+', (diff * 1000 / RIST_CLOCK));
+	rist_log_priv2(flow->logging_settings, RIST_LOG_DEBUG, "Recalculated clock offset, old offset: %lu, new offset: %lu difference: %c%lu usec\n",
+							flow->time_offset, median_offset, negative? '-': '+', (diff * 1000 / RIST_CLOCK));
 	flow->time_offset = median_offset;
 }
 
@@ -512,7 +518,8 @@ static int receiver_enqueue(struct rist_peer *peer, uint64_t source_time, uint64
 		{
 			/* Clear the queue if the queue had data */
 			/* f->receiver_queue_has_items can be reset to false when the output queue is emptied */
-            rist_log_priv(get_cctx(peer), RIST_LOG_INFO, "Clearing up old %zu bytes of old buffer data\n", atomic_load_explicit(&f->receiver_queue_size, memory_order_acquire));
+			rist_log_priv(get_cctx(peer), RIST_LOG_INFO,
+					"Clearing up old %zu bytes of old buffer data\n", atomic_load_explicit(&f->receiver_queue_size, memory_order_acquire));
 			/* Delete all buffer data (if any) */
 			empty_receiver_queue(f, get_cctx(peer));
 		}
@@ -530,8 +537,9 @@ static int receiver_enqueue(struct rist_peer *peer, uint64_t source_time, uint64
 		f->max_source_time = source_time;
 		/* This will synchronize idx and seq so we can insert packets into receiver buffer based on seq number */
 		size_t idx_initial = seq & (f->receiver_queue_max -1);
-		rist_log_priv(get_cctx(peer), RIST_LOG_INFO, "Storing first packet seq %" PRIu32 ", idx %zu, %" PRIu64 ", offset %" PRId64 " ms, output_idx %zu\n", seq, idx_initial, source_time, peer->flow->time_offset / RIST_CLOCK, idx_initial);
-
+			rist_log_priv(get_cctx(peer), RIST_LOG_INFO,
+				"Storing first packet seq %" PRIu32 ", idx %zu, %" PRIu64 ", offset %" PRId64 " ms, output_idx %zu\n",
+				seq, idx_initial, source_time, peer->flow->time_offset / RIST_CLOCK, idx_initial);
 		uint64_t packet_time = source_time + f->time_offset;
 
 		receiver_insert_queue_packet(f, peer, idx_initial, buf, len, seq, source_time, src_port, dst_port, packet_time);
@@ -596,21 +604,23 @@ static int receiver_enqueue(struct rist_peer *peer, uint64_t source_time, uint64
 	if (RIST_UNLIKELY(packet_time < f->last_packet_ts && seq != expected_seq)) {
 		if (now > (packet_time + (f->recovery_buffer_ticks *1.1)))
 		{
-		    __android_log_print(ANDROID_LOG_DEBUG, "RIST", "Packet %"PRIu32" too late, dropping!", seq);
+			rist_log_priv(get_cctx(peer), RIST_LOG_DEBUG, "Packet %"PRIu32" too late, dropping!\n", seq);
 			pthread_mutex_lock(&(get_cctx(peer)->stats_lock));
 			f->stats_instant.dropped_late++;
                         if (f->stats_instant.dropped_late > 5 * f->stats_instant.received)
                             f->receiver_queue_has_items = false;
 			if ((f->stats_instant.dropped_late > (f->stats_instant.received * 5) && f->stats_instant.received > 100) ||
 				(f->stats_instant.dropped_late > 100 && f->stats_instant.received == 0)) {
-				    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Too many late packets received, resetting flow");
+					rist_log_priv(get_cctx(peer), RIST_LOG_ERROR, "Too many late packets received, resetting flow");
 					f->receiver_queue_has_items = false;
 			}
 			pthread_mutex_unlock(&(get_cctx(peer)->stats_lock));
 			return -1;
 		}
 		if (!retry) {
-            rist_log_priv(get_cctx(peer), RIST_LOG_DEBUG, "Out of order packet received, seq %" PRIu32 " / age %" PRIu64 " ms\n", seq, (timestampNTP_u64() - packet_time) / RIST_CLOCK);
+			rist_log_priv(get_cctx(peer), RIST_LOG_DEBUG,
+				"Out of order packet received, seq %" PRIu32 " / age %" PRIu64 " ms\n",
+				seq, (timestampNTP_u64() - packet_time) / RIST_CLOCK);
 			out_of_order = true;
 		}
 	}
@@ -618,7 +628,7 @@ static int receiver_enqueue(struct rist_peer *peer, uint64_t source_time, uint64
 	if (RIST_UNLIKELY(idx == ((reader_idx -1) &(f->receiver_queue_max -1))))
 	{
 		//Buffer full!
-		__android_log_print(ANDROID_LOG_DEBUG, "RIST", "Buffer is full, dropping packet %"PRIu32"/%zu", seq, idx);
+		rist_log_priv(get_cctx(peer), RIST_LOG_DEBUG, "Buffer is full, dropping packet %"PRIu32"/%zu\n", seq, idx);
 		if (packet_time > f->last_packet_ts)
 			f->last_seq_found  = seq;
 		pthread_mutex_lock(&(get_cctx(peer)->stats_lock));
@@ -626,7 +636,7 @@ static int receiver_enqueue(struct rist_peer *peer, uint64_t source_time, uint64
 		pthread_mutex_unlock(&(get_cctx(peer)->stats_lock));
 		//Something is wrong, and we should reset
 		if (f->stats_instant.dropped_full > 100) {
-		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Buffer is full, resetting buffer");
+			rist_log_priv(get_cctx(peer), RIST_LOG_ERROR, "Buffer is full, resetting buffer\n");
 			f->receiver_queue_has_items = false;
 		}
 		return -1;
@@ -635,14 +645,14 @@ static int receiver_enqueue(struct rist_peer *peer, uint64_t source_time, uint64
 		// TODO: record stats
 		struct rist_buffer *b = f->receiver_queue[idx];
 		if (b->source_time == source_time) {
-		    __android_log_print(ANDROID_LOG_DEBUG, "RIST", "Dupe! %"PRIu32"/%zu", seq, idx);
+			rist_log_priv(get_cctx(peer), RIST_LOG_DEBUG, "Dupe! %"PRIu32"/%zu\n", seq, idx);
 			pthread_mutex_lock(&(get_cctx(peer)->stats_lock));
 			f->stats_instant.dupe++;
 			pthread_mutex_unlock(&(get_cctx(peer)->stats_lock));
 			return 1;
 		}
 		else {
-		    __android_log_print(ANDROID_LOG_DEBUG, "RIST", "Invalid Dupe (possible seq discontinuity)! %"PRIu32", freeing buffer ...", seq);
+			rist_log_priv(get_cctx(peer), RIST_LOG_DEBUG, "Invalid Dupe (possible seq discontinuity)! %"PRIu32", freeing buffer ...\n", seq);
 			free_rist_buffer(get_cctx(peer), b);
 			f->receiver_queue[idx] = NULL;
 		}
@@ -789,13 +799,13 @@ static struct rist_data_block *new_data_block(struct rist_data_block *output_buf
 	else
 		output_buffer = calloc(1, sizeof(struct rist_data_block));
 	if (!output_buffer) {
-	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Error (re)allocating rist_data_block.");
+		rist_log_priv2(get_cctx(b->peer)->logging_settings, RIST_LOG_ERROR, "Error (re)allocating rist_data_block.");
 		return NULL;
 	}
 	if (!output_buffer->ref) {
 		output_buffer->ref = rist_ref_create(output_buffer);
 		if (!output_buffer->ref) {
-		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Error allocating rist_ref.");
+			rist_log_priv2(get_cctx(b->peer)->logging_settings, RIST_LOG_ERROR, "Error allocating rist_ref.");
 			free(output_buffer);
 			return NULL;
 		}
@@ -857,7 +867,9 @@ static void receiver_output(struct rist_receiver *ctx, struct rist_flow *f)
 			f->stats_instant.lost += holes;
 			pthread_mutex_unlock(&ctx->common.stats_lock);
 			output_idx = counter;
-			rist_log_priv(&ctx->common, RIST_LOG_DEBUG,	"Empty buffer element, flushing %"PRIu32" hole(s), now at index %zu, size is %zu", holes, counter, atomic_load_explicit(&f->receiver_queue_size, memory_order_acquire));
+			rist_log_priv(&ctx->common, RIST_LOG_DEBUG,
+					"Empty buffer element, flushing %"PRIu32" hole(s), now at index %zu, size is %zu\n",
+					holes, counter, atomic_load_explicit(&f->receiver_queue_size, memory_order_acquire));
 		}
 		if (b) {
 			if (b->type == RIST_PAYLOAD_TYPE_DATA_RAW) {
@@ -875,7 +887,7 @@ static void receiver_output(struct rist_receiver *ctx, struct rist_flow *f)
 						f->too_late_ctr++;
 						drop = true;
 						if (f->too_late_ctr > 100) {
-						    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Too many old packets, resetting buffer");
+							rist_log_priv(&ctx->common, RIST_LOG_ERROR, "Too many old packets, resetting buffer\n");
 							f->receiver_queue_has_items = false;
 							return;
 						}
@@ -897,7 +909,8 @@ static void receiver_output(struct rist_receiver *ctx, struct rist_flow *f)
 				}
 				if (holes > 0)
 				{
-					rist_log_priv(&ctx->common, RIST_LOG_DEBUG, "Did not find any data after %zu holes (%zu bytes in queue)\n", holes, atomic_load_explicit(&f->receiver_queue_size, memory_order_acquire));
+					rist_log_priv(&ctx->common, RIST_LOG_DEBUG, "Did not find any data after %zu holes (%zu bytes in queue)\n",
+							holes, atomic_load_explicit(&f->receiver_queue_size, memory_order_acquire));
 				}
 				f->too_late_ctr = 0;
 				// Check sequence number and report lost packet
@@ -905,7 +918,9 @@ static void receiver_output(struct rist_receiver *ctx, struct rist_flow *f)
 				if (f->short_seq)
 					next_seq = (uint16_t)next_seq;
 				if (b->seq != next_seq && !holes) {
-                    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Discontinuity, expected %" PRIu32 " got %" PRIu32 "", f->last_seq_output + 1, b->seq);
+					rist_log_priv(&ctx->common, RIST_LOG_ERROR,
+							"Discontinuity, expected %" PRIu32 " got %" PRIu32 "\n",
+							f->last_seq_output + 1, b->seq);
 					pthread_mutex_lock(&ctx->common.stats_lock);
 					f->stats_instant.lost++;
 					pthread_mutex_unlock(&ctx->common.stats_lock);
@@ -937,7 +952,7 @@ static void receiver_output(struct rist_receiver *ctx, struct rist_flow *f)
 					uint32_t fifo_count = (dataout_fifo_write_index - dataout_fifo_read_index)&(ctx->fifo_queue_size -1);
 					if (fifo_count +1 == ctx->fifo_queue_size || !ctx->fifo_queue_size) {
 						if (!ctx->receiver_data_callback)
-						    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Rist data out fifo queue overflow");
+							rist_log_priv(&ctx->common, RIST_LOG_ERROR, "Rist data out fifo queue overflow\n");
 						rist_receiver_data_block_free2(&block);
 						atomic_store_explicit(&f->fifo_overflow, true, memory_order_release);
 					} else
@@ -963,7 +978,7 @@ static void receiver_output(struct rist_receiver *ctx, struct rist_flow *f)
 					}
 					pthread_mutex_unlock(&ctx->common.stats_lock);
 					if (pthread_cond_signal(&(ctx->condition)))
-					    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Call to pthread_cond_signal failed.");
+						rist_log_priv(&ctx->common, RIST_LOG_ERROR, "Call to pthread_cond_signal failed.\n");
 				}
 				// Track this one only for data
 				f->last_seq_output_source_time = b->source_time;
@@ -987,7 +1002,8 @@ next:
 				// if the entire buffer is empty, something is very wrong, reset the queue ...
 				if (delta > recovery_buffer_ticks)
 				{
-                    rist_log_priv(&ctx->common, RIST_LOG_ERROR, "stream is dead (%"PRIu64" ms), re-initializing flow\n", delta/ RIST_CLOCK);
+					rist_log_priv(&ctx->common, RIST_LOG_ERROR, "stream is dead (%"PRIu64" ms), re-initializing flow\n",
+						delta/ RIST_CLOCK);
 					f->receiver_queue_has_items = false;
 				}
 				// exit the function and wait 5ms (max jitter time)
@@ -1063,7 +1079,9 @@ void receiver_nack_output(struct rist_receiver *ctx, struct rist_flow *f)
 		struct rist_peer *peer = mb->peer;
 		ssize_t idx = mb->seq& (f->receiver_queue_max -1);
 		if (peer->config.recovery_mode == RIST_RECOVERY_MODE_DISABLED) {
-		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Nack processing is disabled for this peer, removing seq %"PRIu32" from queue ...", mb->seq);
+			rist_log_priv(&ctx->common, RIST_LOG_ERROR,
+					"Nack processing is disabled for this peer, removing seq %"PRIu32" from queue ...\n",
+					mb->seq);
 			remove_from_queue_reason = 10;
 			f->stats_instant.missing--;
 			goto nack_loop_continue;
@@ -1098,7 +1116,9 @@ void receiver_nack_output(struct rist_receiver *ctx, struct rist_flow *f)
 			}
 			else {
 				// Message with wrong seq!!!
-				__android_log_print(ANDROID_LOG_ERROR, "RIST", "Retry queue has the wrong seq %"PRIu32" != %"PRIu32", removing ...\n", f->receiver_queue[idx]->seq, mb->seq);
+				rist_log_priv(&ctx->common, RIST_LOG_ERROR,
+						"Retry queue has the wrong seq %"PRIu32" != %"PRIu32", removing ...\n",
+						f->receiver_queue[idx]->seq, mb->seq);
 				remove_from_queue_reason = 4;
 				pthread_mutex_lock(&ctx->common.stats_lock);
 				f->stats_instant.missing--;
@@ -1108,14 +1128,18 @@ void receiver_nack_output(struct rist_receiver *ctx, struct rist_flow *f)
 		} else if (peer->buffer_bloat_active) {
 			if (peer->config.congestion_control_mode == RIST_CONGESTION_CONTROL_MODE_AGGRESSIVE) {
 				if (empty == 0) {
-				    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Retry queue is too large, %d, collapsed link (%u), flushing all nacks ...", f->missing_counter, f->stats_total.recovered_average/8);
+					rist_log_priv(&ctx->common, RIST_LOG_ERROR,
+							"Retry queue is too large, %d, collapsed link (%u), flushing all nacks ...\n", f->missing_counter,
+							f->stats_total.recovered_average/8);
 				}
 				remove_from_queue_reason = 5;
 				empty = 1;
 			} else if (peer->config.congestion_control_mode == RIST_CONGESTION_CONTROL_MODE_NORMAL) {
 				if (mb->nack_count > 4) {
 					if (empty == 0) {
-					    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Retry queue is too large, %d, collapsed link (%u), flushing old nacks (%u > %u) ...", f->missing_counter, f->stats_total.recovered_average/8, mb->nack_count, 4);
+						rist_log_priv(&ctx->common, RIST_LOG_ERROR,
+								"Retry queue is too large, %d, collapsed link (%u), flushing old nacks (%u > %u) ...\n",
+								f->missing_counter, f->stats_total.recovered_average/8, mb->nack_count, 4);
 					}
 					remove_from_queue_reason = 6;
 					empty = 1;
@@ -1142,7 +1166,10 @@ void receiver_nack_output(struct rist_receiver *ctx, struct rist_flow *f)
 				send_nack_group(ctx, f);
 			}
 			else if (f->nacks.counter >= maxcounter) {
-			    __android_log_print(ANDROID_LOG_ERROR, "RIST", "nack max counter per packet (%zu) exceeded. Something is very wrong and there is a strong chance memory is corrupt because we wrote past the end of the nacks.array max size!!!", f->nacks.counter );
+				rist_log_priv(&ctx->common, RIST_LOG_ERROR,
+						"nack max counter per packet (%zu) exceeded. Something is very wrong and"
+						" there is a strong chance memory is corrupt because we wrote past the end"
+						"of the nacks.array max size!!!\n", f->nacks.counter );
 				f->nacks.counter = 0;
 				//TODO: maybe assert is more appropriate here?
 			}
@@ -1184,12 +1211,12 @@ static int rist_set_manual_sockdata(struct rist_peer *peer, const struct rist_pe
 	int ret;
 	if ((!hostname || !*hostname) && peer->listening) {
 		if (peer->address_family == AF_INET) {
-		    __android_log_print(ANDROID_LOG_INFO, "RIST", "No hostname specified: listening to 0.0.0.0");
+			rist_log_priv(get_cctx(peer), RIST_LOG_INFO, "No hostname specified: listening to 0.0.0.0\n");
 			peer->address_len = sizeof(struct sockaddr_in);
 			((struct sockaddr_in *)&peer->u.address)->sin_family = AF_INET;
 			((struct sockaddr_in *)&peer->u.address)->sin_addr.s_addr = INADDR_ANY;
 		} else {
-		    __android_log_print(ANDROID_LOG_INFO, "RIST", "No hostname specified: listening to [::0]");
+			rist_log_priv(get_cctx(peer), RIST_LOG_INFO, "No hostname specified: listening to [::0]\n");
 			peer->address_len = sizeof(struct sockaddr_in6);
 			((struct sockaddr_in6 *)&peer->u.address)->sin6_family = AF_INET6;
 			((struct sockaddr_in6 *)&peer->u.address)->sin6_addr = in6addr_any;
@@ -1197,7 +1224,7 @@ static int rist_set_manual_sockdata(struct rist_peer *peer, const struct rist_pe
 	} else {
 		ret = udpsocket_resolve_host(hostname, config->physical_port, &peer->u.address);
 		if (ret != 0) {
-		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Error trying to resolve hostname %s", hostname);
+			rist_log_priv(get_cctx(peer), RIST_LOG_ERROR, "Error trying to resolve hostname %s\n", hostname);
 			goto err;
 		}
 		peer->address_family = ((struct sockaddr_in *)&peer->u.address)->sin_family;
@@ -1224,17 +1251,18 @@ struct rist_peer *rist_receiver_peer_insert_local(struct rist_receiver *ctx,
 {
 	if (config->key_size) {
 		if (config->key_size != 128 && config->key_size != 192 && config->key_size != 256) {
-		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Invalid encryption key length: %d", config->key_size);
+			rist_log_priv(&ctx->common, RIST_LOG_ERROR, "Invalid encryption key length: %d\n", config->key_size);
 			return NULL;
 		}
 		if (!strlen(config->secret)) {
-            __android_log_print(ANDROID_LOG_ERROR, "RIST", "Invalid secret passphrase");
+
+			rist_log_priv(&ctx->common, RIST_LOG_ERROR, "Invalid secret passphrase\n");
 			return NULL;
 		}
-		__android_log_print(ANDROID_LOG_INFO, "RIST", "Using %d bits secret key", config->key_size);
+		rist_log_priv(&ctx->common, RIST_LOG_INFO, "Using %d bits secret key\n", config->key_size);
 	}
 	else {
-	    __android_log_print(ANDROID_LOG_INFO, "RIST", "Encryption is disabled for this peer");
+		rist_log_priv(&ctx->common, RIST_LOG_INFO, "Encryption is disabled for this peer\n");
 	}
 
 	/* Initialize peer */
@@ -1261,7 +1289,8 @@ struct rist_peer *rist_receiver_peer_insert_local(struct rist_receiver *ctx,
 
 	if (config->session_timeout > 0) {
 		if (config->session_timeout < 250) {
-		    __android_log_print(ANDROID_LOG_WARN, "RIST","The configured (%d ms) peer session timeout is too small, using %d ms instead", config->session_timeout, 250);
+			rist_log_priv(&ctx->common, RIST_LOG_WARN, "The configured (%d ms) peer session timeout is too small, using %d ms instead\n",
+				config->session_timeout, 250);
 			p->session_timeout = 250 * RIST_CLOCK;
 		}
 		else
@@ -1274,7 +1303,7 @@ struct rist_peer *rist_receiver_peer_insert_local(struct rist_receiver *ctx,
 	/* Initialize socket */
 	rist_create_socket(p);
 	if (p->sd < 0) {
-	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Could not create socket");
+		rist_log_priv(&ctx->common, RIST_LOG_ERROR, "Could not create socket\n");
 		free(p);
 		return NULL;
 	}
@@ -1301,18 +1330,22 @@ void rist_fsm_init_comm(struct rist_peer *peer)
 	if (!peer->receiver_mode) {
 		if (peer->listening) {
 			/* sender mode listening/waiting for receiver */
-			__android_log_print(ANDROID_LOG_INFO, "RIST", "Initialized Sender Peer, listening mode ...");
+			rist_log_priv(get_cctx(peer), RIST_LOG_INFO,
+					"Initialized Sender Peer, listening mode ...\n");
 		} else {
 			/* sender mode connecting to receiver */
-			__android_log_print(ANDROID_LOG_INFO, "RIST", "Initialized Sender Peer, connecting to receiver ...");
+			rist_log_priv(get_cctx(peer), RIST_LOG_INFO,
+					"Initialized Sender Peer, connecting to receiver ...\n");
 		}
 	} else {
 		if (peer->listening) {
 			/* receiver mode listening/waiting for sender */
-			__android_log_print(ANDROID_LOG_INFO, "RIST", "Initialized Receiver Peer, listening mode ...");
+			rist_log_priv(get_cctx(peer), RIST_LOG_INFO,
+					"Initialized Receiver Peer, listening mode ...\n");
 		} else {
 			/* receiver mode connecting to sender */
-			__android_log_print(ANDROID_LOG_INFO, "RIST", "Initialized Receiver Peer, connecting to sender ...");
+			rist_log_priv(get_cctx(peer), RIST_LOG_INFO,
+					"Initialized Receiver Peer, connecting to sender ...\n");
 		}
 	}
 	peer->authenticated = false;
@@ -1328,7 +1361,7 @@ void rist_fsm_init_comm(struct rist_peer *peer)
 	/* Enable RTCP timer and jump start it */
 	if (!peer->listening && peer->is_rtcp) {
 		if (!peer->send_keepalive) {
-			__android_log_print(ANDROID_LOG_INFO, "RIST", "Enabling keepalive for peer %"PRIu32"", peer->adv_peer_id);
+			rist_log_priv(get_cctx(peer), RIST_LOG_INFO, "Enabling keepalive for peer %"PRIu32"\n", peer->adv_peer_id);
 			peer->send_keepalive = true;
 		}
 
@@ -3032,14 +3065,15 @@ protocol_bypass:
 			{
 				if ((now - last_rtcp_received) > peer->session_timeout)
 				{
-                    rist_log_priv2(cctx->logging_settings, RIST_LOG_WARN, "Listening peer %u timed out after %"PRIu64" ms\n", peer->adv_peer_id, (now - last_rtcp_received)/ RIST_CLOCK);
+					rist_log_priv2(cctx->logging_settings, RIST_LOG_WARN, "Listening peer %u timed out after %"PRIu64" ms\n", peer->adv_peer_id,
+						(now - last_rtcp_received)/ RIST_CLOCK);
 					kill_peer(peer);
 				}
 			} else if (peer->dead && peer->parent)
 			{
 				if ( peer->dead_since < now && (now - peer->dead_since) > 5000 * RIST_CLOCK)
 				{
-				    __android_log_print(ANDROID_LOG_INFO, "RIST", "Removing timed-out peer %u", peer->adv_peer_id);
+					rist_log_priv2(cctx->logging_settings, RIST_LOG_INFO, "Removing timed-out peer %u\n", peer->adv_peer_id);
 					rist_peer_remove(cctx, peer, NULL);
 				}
 			}
@@ -3156,33 +3190,33 @@ protocol_bypass:
 		ctx->evctx = evsocket_create();
 		ctx->rist_max_jitter = RIST_MAX_JITTER * RIST_CLOCK;
 		if (profile > RIST_PROFILE_ADVANCED) {
-		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Profile not supported (%d), using main profile instead", profile);
+			rist_log_priv3( RIST_LOG_ERROR, "Profile not supported (%d), using main profile instead\n", profile);
 			profile = RIST_PROFILE_MAIN;
 		}
 		if (profile == RIST_PROFILE_SIMPLE)
-		    __android_log_print(ANDROID_LOG_INFO, "RIST", "Starting in Simple Profile Mode");
+			rist_log_priv3( RIST_LOG_INFO, "Starting in Simple Profile Mode\n");
 		else if (profile == RIST_PROFILE_MAIN)
-		    __android_log_print(ANDROID_LOG_INFO, "RIST", "Starting in Main Profile Mode");
+			rist_log_priv3( RIST_LOG_INFO, "Starting in Main Profile Mode\n");
 		else if (profile == RIST_PROFILE_ADVANCED)
-		    __android_log_print(ANDROID_LOG_INFO, "RIST", "Starting in Advanced Profile Mode");
+			rist_log_priv3( RIST_LOG_INFO, "Starting in Advanced Profile Mode\n");
 
 		ctx->profile = profile;
 		ctx->stats_report_time = 0;
 
 		if (pthread_mutex_init(&ctx->peerlist_lock, NULL) != 0) {
-		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Failed to init ctx->peerlist_lock");
+			rist_log_priv3( RIST_LOG_ERROR, "Failed to init ctx->peerlist_lock\n");
 			return -1;
 		}
 		if (pthread_mutex_init(&ctx->rist_free_buffer_mutex, NULL) != 0) {
-		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Failed to init ctx->rist_free_buffer_mutex");
+			rist_log_priv3( RIST_LOG_ERROR, "Failed to init ctx->rist_free_buffer_mutex\n");
 			return -1;
 		}
 		if (pthread_mutex_init(&ctx->flows_lock, NULL) != 0) {
-		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Failed to init ctx->flows_lock");
+			rist_log_priv3( RIST_LOG_ERROR, "Failed to init ctx->flows_lock\n");
 			return -1;
 		}
 		if (pthread_mutex_init(&ctx->stats_lock, NULL) != 0) {
-		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Failed to init ctx->stats_lock");
+			rist_log_priv3( RIST_LOG_ERROR, "Failed to init ctx->stats_lock\n");
 			return -1;
 		}
 		return 0;
@@ -3257,7 +3291,7 @@ int rist_peer_remove(struct rist_common_ctx *ctx, struct rist_peer *peer, struct
 	if (peer->child)
 	{
 		while (peer->child) {
-		    __android_log_print(ANDROID_LOG_INFO, "RIST", "[CLEANUP] removing child peer %u from peer %u", peer->child->adv_peer_id, peer->adv_peer_id);
+			rist_log_priv2(ctx->logging_settings, RIST_LOG_INFO, "[CLEANUP] removing child peer %u from peer %u\n", peer->child->adv_peer_id, peer->adv_peer_id);
 			rist_peer_remove(ctx, peer->child, NULL);
 		}
 	}
@@ -3313,7 +3347,7 @@ int rist_peer_remove(struct rist_common_ctx *ctx, struct rist_peer *peer, struct
 	/* data receive event */
 	if (!peer->parent && peer->event_recv)
 	{
-	    __android_log_print(ANDROID_LOG_INFO, "RIST", "[CLEANUP] Removing peer data received event");
+		rist_log_priv2(ctx->logging_settings, RIST_LOG_INFO, "[CLEANUP] Removing peer data received event\n");
 		struct evsocket_ctx *evctx = ctx->evctx;
 		evsocket_delevent(evctx, peer->event_recv);
 	}
@@ -3321,14 +3355,14 @@ int rist_peer_remove(struct rist_common_ctx *ctx, struct rist_peer *peer, struct
 	/* rtcp timer */
 	if (peer->send_keepalive)
 	{
-	    __android_log_print(ANDROID_LOG_INFO, "RIST", "[CLEANUP] Removing peer handshake/ping timer");
+		rist_log_priv2(ctx->logging_settings, RIST_LOG_INFO, "[CLEANUP] Removing peer handshake/ping timer\n");
 		peer->send_keepalive = false;
 	}
 
 
 	if (!peer->parent && peer->sd > -1)
 	{
-	    __android_log_print(ANDROID_LOG_INFO, "RIST", "[CLEANUP] Closing peer socket on port %d", peer->local_port);
+		rist_log_priv2(ctx->logging_settings, RIST_LOG_INFO, "[CLEANUP] Closing peer socket on port %d\n", peer->local_port);
 		udpsocket_close(peer->sd);
 		peer->sd = -1;
 	}
@@ -3345,7 +3379,7 @@ int rist_peer_remove(struct rist_common_ctx *ctx, struct rist_peer *peer, struct
 	}
 	if (next != NULL)
 		*next = peer->next;
-	__android_log_print(ANDROID_LOG_INFO, "RIST", "[CLEANUP] cleanup done for peer %u", peer->adv_peer_id);
+	rist_log_priv2(ctx->logging_settings, RIST_LOG_INFO, "[CLEANUP] cleanup done for peer %u\n", peer->adv_peer_id);
 	free(peer);
 	return 0;
 }
@@ -3417,30 +3451,28 @@ struct rist_peer *rist_sender_peer_insert_local(struct rist_sender *ctx,
 {
 	if (config->key_size) {
 		if (config->key_size != 128 && config->key_size != 192 && config->key_size != 256) {
-			__android_log_print(ANDROID_LOG_ERROR, "RIST", "Invalid encryption key length: %d", config->key_size);
+			rist_log_priv(&ctx->common, RIST_LOG_ERROR, "Invalid encryption key length: %d\n", config->key_size);
 			return NULL;
 		}
 		if (!strlen(config->secret)) {
-		    __android_log_print(ANDROID_LOG_ERROR, "RIST", "Invalid secret passphrase");
+			rist_log_priv(&ctx->common, RIST_LOG_ERROR, "Invalid secret passphrase\n");
 			return NULL;
 		}
-		__android_log_print(ANDROID_LOG_INFO, "RIST", "Using %d bits secret key", config->key_size);
+		rist_log_priv(&ctx->common, RIST_LOG_INFO, "Using %d bits secret key\n", config->key_size);
 	}
 	else {
-	    __android_log_print(ANDROID_LOG_INFO, "RIST", "Encryption is disabled for this peer\n");
+		rist_log_priv(&ctx->common, RIST_LOG_INFO, "Encryption is disabled for this peer\n");
 	}
 
 	/* Initialize peer */
 	struct rist_peer *newpeer = peer_initialize(config->address, ctx, NULL);
 	if (!newpeer) {
-	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "peer Initalize fail");
 		return NULL;
 	}
 
 	strncpy(&newpeer->miface[0], config->miface, RIST_MAX_STRING_SHORT);
 	strncpy(&newpeer->cname[0], config->cname, RIST_MAX_STRING_SHORT);
 	if (config->address_family && rist_set_manual_sockdata(newpeer, config)) {
-	    __android_log_print(ANDROID_LOG_ERROR, "RIST", "free newpeer");
 		free(newpeer);
 		return NULL;
 	}
@@ -3464,7 +3496,7 @@ struct rist_peer *rist_sender_peer_insert_local(struct rist_sender *ctx,
 	/* Initialize socket */
 	rist_create_socket(newpeer);
 	if (newpeer->sd < 0) {
-	    __android_log_print(ANDROID_LOG_ERROR, "RIST","Could not create socket");
+		rist_log_priv(&ctx->common, RIST_LOG_ERROR, "Could not create socket\n");
 		free(newpeer);
 		return NULL;
 	}
