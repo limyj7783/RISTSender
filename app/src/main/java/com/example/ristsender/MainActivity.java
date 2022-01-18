@@ -18,6 +18,7 @@ public class MainActivity extends AppCompatActivity {
 
     RIST rist;
     Button sendStart;
+    Button receiveStart;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -29,7 +30,15 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View view)
             {
-                //rist.SendStart("", 8000);
+                rist.SendStart("", 8000);
+            }
+        }) ;
+
+        receiveStart = (Button)findViewById(R.id.btn_ReceiveStart);
+        receiveStart.setOnClickListener(new Button.OnClickListener() {
+            @Override
+            public void onClick(View view)
+            {
                 rist.ReceiveStart();
             }
         }) ;

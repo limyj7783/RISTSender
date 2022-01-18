@@ -323,14 +323,14 @@ int udpsocket_open_bind(const char *host, uint16_t port, const char *mciface)
 	if (is_multicast) {
 		struct sockaddr_in6 sa = { .sin6_family = raw.sin6_family, .sin6_port = raw.sin6_port };
 		if (bind(sd, (struct sockaddr *)&sa, addrlen) < 0)	{
-			rist_log_priv3(RIST_LOG_ERROR, "Could not bind to interface: %s\n", strerror(errno));
+			rist_log_priv3(RIST_LOG_ERROR, "Could not bind to interface: (%d)%s\n", errno, strerror(errno));
 			close(sd);
 			return -1;
 		}
 	} else
 #endif
 	if (bind(sd, (struct sockaddr *)&raw, addrlen) < 0)	{
-		rist_log_priv3( RIST_LOG_ERROR, "Could not bind to interface: %s\n", strerror(errno));
+		rist_log_priv3( RIST_LOG_ERROR, "Could not bind to interface: (%d)%s\n", errno, strerror(errno));
 		close(sd);
 		return -1;
 	}

@@ -2,14 +2,51 @@
 // Created by limyj7783 on 2022-01-17.
 //
 
+#include "RISTReceiverInterface.h"
+
+#if defined(_WIN32) || defined(_WIN64)
+# define strtok_r strtok_s
+#endif
+
+#define RISTRECEIVER_VERSION "2"
+
+#define MAX_INPUT_COUNT 20
+#define MAX_OUTPUT_COUNT 20
+#define ReadEnd  0
+#define WriteEnd 1
+#define DATA_READ_MODE_CALLBACK 0
+#define DATA_READ_MODE_POLL 1
+#define DATA_READ_MODE_API 2
+
+pthread_mutex_t signal_lock;
+static int signalReceived = 0;
+static struct rist_logging_settings logging_settings = LOGGING_SETTINGS_INITIALIZER;
+enum rist_profile profile = RIST_PROFILE_SIMPLE;
+static int peer_connected_count = 0;
+
+struct rist_callback_object {
+	int mpeg[MAX_OUTPUT_COUNT];
+	struct rist_udp_config *udp_config[MAX_OUTPUT_COUNT];
+	uint16_t i_seqnum[MAX_OUTPUT_COUNT];
+};
+
+struct ristreceiver_flow_cumulative_stats {
+	uint32_t flow_id;
+	uint64_t received;
+	uint64_t recovered;
+	uint64_t lost;
+	struct ristreceiver_flow_cumulative_stats *next;
+};
+struct ristreceiver_flow_cumulative_stats *stats_list;
+
 JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_ReceiveStart(JNIEnv *env, jobject thiz)
 {
 	int option_index;
 	int c;
 	int data_read_mode = DATA_READ_MODE_CALLBACK;
 	const struct rist_peer_config *peer_input_config[MAX_INPUT_COUNT];
-	char *inputurl = NULL;
-	char *outputurl = NULL;
+	char *inputurl = "rist://@123.123.123.123:8200?cname=RECEIVER01&bandwidth=2560000";
+	char *outputurl = "udp://127.127.0.1:8192";
 	char *oobtun = NULL;
 	char *shared_secret = NULL;
 	int buffer = 0;
@@ -23,6 +60,11 @@ JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_ReceiveStart(JNIEnv *env
 		fprintf(stderr, "Could not initialize signal lock\n");
 		exit(1);
 	}
+
+#ifndef _WIN32
+	/* Receiver pipe handle */
+	int receiver_pipe[2];
+#endif
 
 #if HAVE_MBEDTLS
 	FILE *srpfile = NULL;
@@ -160,30 +202,31 @@ JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_ReceiveStart(JNIEnv *env
 		struct rist_udp_config *udp_config = NULL;
 		if (rist_parse_udp_address2(outputtoken, &udp_config)) {
 			rist_log(&logging_settings, RIST_LOG_ERROR, "Could not parse outputurl %s\n", outputtoken);
-			goto next;
+			//goto next;
 		}
+		else
+		{
+			// Now parse the address 127.0.0.1:5000
+        	char hostname[200] = {0};
+        	int outputlisten;
+        	uint16_t outputport;
+        	if (udpsocket_parse_url((void *)udp_config->address, hostname, 200, &outputport, &outputlisten) || !outputport || strlen(hostname) == 0) {
+        		rist_log(&logging_settings, RIST_LOG_ERROR, "Could not parse output url %s\n", outputtoken);
+        		goto next;
+        	}
+        	rist_log(&logging_settings, RIST_LOG_INFO, "URL parsed successfully: Host %s, Port %d\n", (char *) hostname, outputport);
 
-		// Now parse the address 127.0.0.1:5000
-		char hostname[200] = {0};
-		int outputlisten;
-		uint16_t outputport;
-		if (udpsocket_parse_url((void *)udp_config->address, hostname, 200, &outputport, &outputlisten) || !outputport || strlen(hostname) == 0) {
-			rist_log(&logging_settings, RIST_LOG_ERROR, "Could not parse output url %s\n", outputtoken);
-			goto next;
+        	// Open the output socket
+        	callback_object.mpeg[i] = udpsocket_open_connect(hostname, outputport, udp_config->miface);
+        	if (callback_object.mpeg[i] < 0) {
+        		rist_log(&logging_settings, RIST_LOG_ERROR, "Could not connect to: Host %s, Port %d\n", (char *) hostname, outputport);
+        		goto next;
+        	} else {
+        		rist_log(&logging_settings, RIST_LOG_INFO, "Output socket is open and bound %s:%d\n", (char *) hostname, outputport);
+        		atleast_one_socket_opened = true;
+        	}
+        	callback_object.udp_config[i] = udp_config;
 		}
-		rist_log(&logging_settings, RIST_LOG_INFO, "URL parsed successfully: Host %s, Port %d\n", (char *) hostname, outputport);
-
-		// Open the output socket
-		callback_object.mpeg[i] = udpsocket_open_connect(hostname, outputport, udp_config->miface);
-		if (callback_object.mpeg[i] < 0) {
-			rist_log(&logging_settings, RIST_LOG_ERROR, "Could not connect to: Host %s, Port %d\n", (char *) hostname, outputport);
-			goto next;
-		} else {
-			rist_log(&logging_settings, RIST_LOG_INFO, "Output socket is open and bound %s:%d\n", (char *) hostname, outputport);
-			atleast_one_socket_opened = true;
-		}
-		callback_object.udp_config[i] = udp_config;
-
 next:
 		outputtoken = strtok_r(NULL, ",", &saveptr2);
 	}
@@ -349,4 +392,158 @@ next:
 		stats = next;
 	}
 	return 0;
+}
+
+static int cb_auth_connect(void *arg, const char* connecting_ip, uint16_t connecting_port, const char* local_ip, uint16_t local_port, struct rist_peer *peer)
+{
+	(void)peer;
+	struct rist_ctx *ctx = (struct rist_ctx *)arg;
+	char buffer[500];
+	char message[200];
+	int message_len = snprintf(message, 200, "auth,%s:%d,%s:%d", connecting_ip, connecting_port, local_ip, local_port);
+	// To be compliant with the spec, the message must have an ipv4 header
+	int ret = oob_build_api_payload(buffer, (char *)connecting_ip, (char *)local_ip, message, message_len);
+	rist_log(&logging_settings, RIST_LOG_INFO,"Peer has been authenticated, sending oob/api message: %s\n", message);
+	struct rist_oob_block oob_block;
+	oob_block.peer = peer;
+	oob_block.payload = buffer;
+	oob_block.payload_len = ret;
+	rist_oob_write(ctx, &oob_block);
+	return 0;
+}
+
+static int cb_auth_disconnect(void *arg, struct rist_peer *peer)
+{
+	(void)peer;
+	struct rist_ctx *ctx = (struct rist_ctx *)arg;
+	(void)ctx;
+	return 0;
+}
+
+static void connection_status_callback(void *arg, struct rist_peer *peer, enum rist_connection_status peer_connection_status)
+{
+	(void)arg;
+	if (peer_connection_status == RIST_CONNECTION_ESTABLISHED || peer_connection_status == RIST_CLIENT_CONNECTED)
+		peer_connected_count++;
+	else
+		peer_connected_count--;
+	rist_log(&logging_settings, RIST_LOG_INFO,"Connection Status changed for Peer %"PRIu64", new status is %d, peer connected count is %d\n",
+				peer, peer_connection_status, peer_connected_count);
+}
+
+static int cb_recv_oob(void *arg, const struct rist_oob_block *oob_block)
+{
+	struct rist_ctx *ctx = (struct rist_ctx *)arg;
+	(void)ctx;
+	int message_len = 0;
+	char *message = oob_process_api_message((int)oob_block->payload_len, (char *)oob_block->payload, &message_len);
+	if (message) {
+		rist_log(&logging_settings, RIST_LOG_INFO,"Out-of-band api data received: %.*s\n", message_len, message);
+	}
+	return 0;
+}
+
+static int cb_stats(void *arg, const struct rist_stats *stats_container) {
+	(void)arg;
+	rist_log(&logging_settings, RIST_LOG_INFO, "%s\n",  stats_container->stats_json);
+	if (stats_container->stats_type == RIST_STATS_RECEIVER_FLOW)
+	{
+		struct ristreceiver_flow_cumulative_stats *stats = stats_list;
+		struct ristreceiver_flow_cumulative_stats **prev = &stats_list;
+		while (stats && stats->flow_id != stats_container->stats.receiver_flow.flow_id)
+		{
+			prev = &stats->next;
+			stats = stats->next;
+		}
+		if (!stats) {
+			stats = calloc(sizeof(*stats), 1);
+			stats->flow_id = stats_container->stats.receiver_flow.flow_id;
+			*prev = stats;
+		}
+		stats->received += stats_container->stats.receiver_flow.received;
+		stats->lost += stats_container->stats.receiver_flow.lost;
+		stats->recovered += stats_container->stats.receiver_flow.recovered;
+		//Bit ugly, but linking in cJSON seems a bit excessive for this 4 variable JSON string
+		rist_log(&logging_settings, RIST_LOG_INFO,
+				 "{\"flow_cumulative_stats\":{\"flow_id\":%"PRIu32",\"received\":%"PRIu64",\"recovered\":%"PRIu64",\"lost\":%"PRIu64"}}\n",
+				 stats->flow_id, stats->received, stats->recovered, stats->lost);
+	}
+	rist_stats_free(stats_container);
+	return 0;
+}
+
+static int cb_recv(void *arg, struct rist_data_block *b)
+{
+	struct rist_callback_object *callback_object = (void *) arg;
+
+	int found = 0;
+	int i = 0;
+	for (i = 0; i < MAX_OUTPUT_COUNT; i++) {
+		if (!callback_object->udp_config[i])
+			continue;
+		struct rist_udp_config *udp_config = callback_object->udp_config[i];
+		// The stream-id on the udp url gets translated into the virtual destination port of the GRE tunnel
+		uint16_t virt_dst_port = udp_config->stream_id;
+		// look for the correct mapping of destination port to output
+		if (profile == RIST_PROFILE_SIMPLE ||  virt_dst_port == 0 || (virt_dst_port == b->virt_dst_port)) {
+			if (callback_object->mpeg[i] > 0) {
+				uint8_t *payload = NULL;
+				size_t payload_len = 0;
+				if (udp_config->rtp) {
+					payload = malloc(12 + b->payload_len);
+					payload_len = 12 + b->payload_len;
+					// Transfer payload
+					memcpy(payload + 12, b->payload, b->payload_len);
+					// Set RTP header (mpegts)
+					uint16_t i_seqnum = udp_config->rtp_sequence ? (uint16_t)b->seq : callback_object->i_seqnum[i]++;
+					uint32_t i_timestamp = risttools_convertNTPtoRTP(b->ts_ntp);
+					uint8_t ptype = 0x21;
+					if (udp_config->rtp_ptype != 0)
+						ptype = udp_config->rtp_ptype;
+					risttools_rtp_set_hdr(payload, ptype, i_seqnum, i_timestamp, b->flow_id);
+				}
+				else {
+					payload = (uint8_t *)b->payload;
+					payload_len = b->payload_len;
+				}
+				int ret = udpsocket_send(callback_object->mpeg[i], payload, payload_len);
+				if (udp_config->rtp)
+					free(payload);
+				if (ret <= 0 && errno != ECONNREFUSED)
+					rist_log(&logging_settings, RIST_LOG_ERROR, "Error %d sending udp packet to socket %d\n", errno, callback_object->mpeg[i]);
+				found = 1;
+			}
+		}
+	}
+
+	if (found == 0)
+	{
+		rist_log(&logging_settings, RIST_LOG_ERROR, "Destination port mismatch, no output found for %d\n", b->virt_dst_port);
+		return -1;
+	}
+	rist_receiver_data_block_free2(&b);
+	return 0;
+}
+
+static uint32_t risttools_convertNTPtoRTP(uint64_t i_ntp)
+{
+	i_ntp *= 90000;
+	i_ntp = i_ntp >> 32;
+	return (uint32_t)i_ntp;
+}
+
+static inline void risttools_rtp_set_hdr(uint8_t *p_rtp, uint8_t i_type, uint16_t i_seqnum, uint32_t i_timestamp, uint32_t i_ssrc)
+{
+	p_rtp[0] = 0x80;
+	p_rtp[1] = i_type & 0x7f;
+	p_rtp[2] = i_seqnum >> 8;
+	p_rtp[3] = i_seqnum & 0xff;
+    p_rtp[4] = (i_timestamp >> 24) & 0xff;
+    p_rtp[5] = (i_timestamp >> 16) & 0xff;
+    p_rtp[6] = (i_timestamp >> 8) & 0xff;
+    p_rtp[7] = i_timestamp & 0xff;
+	p_rtp[8] = (i_ssrc >> 24) & 0xff;
+	p_rtp[9] = (i_ssrc >> 16) & 0xff;
+	p_rtp[10] = (i_ssrc >> 8) & 0xff;
+	p_rtp[11] = i_ssrc & 0xff;
 }
