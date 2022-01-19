@@ -45,7 +45,7 @@ JNIEXPORT jint JNICALL Java_com_example_ristsender_RIST_ReceiveStart(JNIEnv *env
 	int c;
 	int data_read_mode = DATA_READ_MODE_CALLBACK;
 	const struct rist_peer_config *peer_input_config[MAX_INPUT_COUNT];
-	char *inputurl = "rist://@123.123.123.123:8200?cname=RECEIVER01&bandwidth=2560000";
+	char *inputurl = "rist://123.123.123.123:8200?cname=RECEIVER01&bandwidth=2560000";
 	char *outputurl = "udp://127.127.0.1:8192";
 	char *oobtun = NULL;
 	char *shared_secret = NULL;
